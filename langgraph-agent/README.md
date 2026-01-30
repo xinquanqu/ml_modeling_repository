@@ -1,0 +1,203 @@
+# LangGraph Agent Service
+
+A simple agent service using FastAPI with LangGraph to manage the agent, featuring a React frontend with graph visualization and state inspection.
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Frontend (React)                         │
+├─────────────────┬─────────────────────────┬─────────────────────┤
+│  Graph Sidebar  │      Chat Panel         │   State Sidebar     │
+│  - Visualize    │  - Send messages        │   - Current state   │
+│    LangGraph    │  - View responses       │   - State history   │
+│  - Active node  │  - Connection status    │   - Node tracking   │
+└─────────────────┴───────────┬─────────────┴─────────────────────┘
+                              │ WebSocket
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      Backend (FastAPI)                          │
+├─────────────────────────────────────────────────────────────────┤
+│  Endpoints:                                                      │
+│  - GET  /        → Health check                                 │
+│  - GET  /graph   → Graph structure                              │
+│  - POST /chat    → Process message                              │
+│  - WS   /ws      → Real-time streaming                          │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      LangGraph Agent                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   ┌─────────┐     ┌──────────┐     ┌────────────────┐           │
+│   │  START  │────▶│ Chatbot  │────▶│ Tool Executor  │           │
+│   └─────────┘     └──────────┘     └────────────────┘           │
+│                        │                    │                    │
+│                        │ (no tools)         │                    │
+│                        ▼                    ▼                    │
+│                   ┌─────────┐          ┌─────────┐              │
+│                   │   END   │◀─────────│   END   │              │
+│                   └─────────┘          └─────────┘              │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Project Structure
+
+```
+langgraph-agent/
+├── backend/
+│   ├── __init__.py
+│   ├── main.py              # FastAPI app with LangGraph agent
+│   └── requirements.txt
+├── frontend/
+│   ├── public/
+│   │   └── index.html
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── index.js
+│   │   │   ├── ChatPanel.jsx
+│   │   │   ├── GraphSidebar.jsx
+│   │   │   └── StateSidebar.jsx
+│   │   ├── hooks/
+│   │   │   ├── index.js
+│   │   │   └── useWebSocket.js
+│   │   ├── styles/
+│   │   │   └── App.css
+│   │   ├── App.jsx
+│   │   └── index.jsx
+│   ├── package.json
+│   └── vite.config.js
+├── .env.example
+├── .gitignore
+└── README.md
+```
+
+## Setup
+
+### Backend
+
+```bash
+cd backend
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the server
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Frontend
+
+```bash
+cd frontend
+
+# Install dependencies
+npm install
+
+# Run development server
+npm run dev
+```
+
+## Features
+
+### Graph Sidebar (Left)
+- Visual representation of the LangGraph structure
+- Highlights the currently active node during execution
+- Shows node types (start, end, regular nodes)
+- Displays edge connections including conditional edges
+
+### Chat Panel (Center)
+- Send messages to the agent
+- View conversation history
+- Connection status indicator
+- Clear chat functionality
+
+### State Sidebar (Right)
+- **Current Tab**: Shows the current agent state
+  - Active node
+  - State values (current_node, iteration, tool_calls, etc.)
+- **History Tab**: Shows state transitions over time
+  - Timestamp for each state change
+  - Node transitions
+  - State snapshots
+
+## API Endpoints
+
+### REST API
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/` | Health check |
+| GET | `/graph` | Get graph structure for visualization |
+| POST | `/chat` | Send a message and get response |
+
+### WebSocket
+
+| Endpoint | Description |
+|----------|-------------|
+| `/ws` | Real-time bidirectional communication |
+
+**WebSocket Message Types:**
+
+Incoming (Client → Server):
+```json
+{ "message": "user message text" }
+```
+
+Outgoing (Server → Client):
+```json
+{ "type": "state_update", "node": "chatbot", "state": {...} }
+{ "type": "response", "content": "agent response", "final_state": {...} }
+```
+
+## Extending the Agent
+
+### Adding New Nodes
+
+1. Define the node function in `backend/main.py`:
+```python
+def my_new_node(state: AgentState) -> AgentState:
+    # Process state
+    return {"messages": [...], "current_node": "my_new_node", ...}
+```
+
+2. Add the node to the graph:
+```python
+graph.add_node("my_new_node", my_new_node)
+```
+
+3. Connect with edges:
+```python
+graph.add_edge("chatbot", "my_new_node")
+```
+
+4. Update `get_graph_structure()` to include the new node in visualization.
+
+### Adding Real LLM Integration
+
+Replace the mock response logic in `chatbot_node` with actual LLM calls:
+
+```python
+from langchain_openai import ChatOpenAI
+
+llm = ChatOpenAI(model="gpt-4")
+
+def chatbot_node(state: AgentState) -> AgentState:
+    messages = state["messages"]
+    response = llm.invoke(messages)
+    return {
+        "messages": [response],
+        "current_node": "chatbot",
+        ...
+    }
+```
+
+## License
+
+MIT
