@@ -1,6 +1,4 @@
-from typing import Literal
-from langchain_core.messages import HumanMessage
-from app.models import AgentState
+from app.services.gateway import llm_gateway
 
 def chatbot_node(state: AgentState) -> AgentState:
     """Main chatbot node - processes user input and generates responses."""
@@ -9,31 +7,14 @@ def chatbot_node(state: AgentState) -> AgentState:
     
     # FIX: Check if it's a dict or object and access content accordingly
     if isinstance(last_message, dict):
-        user_input = last_message.get("content", "").lower()
+        user_input_content = last_message.get("content", "")
     elif hasattr(last_message, "content"):
-        user_input = last_message.content.lower()
+        user_input_content = last_message.content
     else:
-        user_input = ""
+        user_input_content = ""
     
-    if "weather" in user_input:
-        response = "I'd need to check the weather tool for that. Let me look it up..."
-        tool_calls = [{"tool": "weather", "args": {"query": user_input}}]
-    elif "search" in user_input:
-        response = "Let me search for that information..."
-        tool_calls = [{"tool": "search", "args": {"query": user_input}}]
-    elif "help" in user_input:
-        response = "I can help you with: weather queries, web searches, and general conversation!"
-        tool_calls = []
-    else:
-        # Construct response with safe content access
-        msg_content = ""
-        if isinstance(last_message, dict):
-             msg_content = last_message.get("content", "")
-        elif hasattr(last_message, "content"):
-             msg_content = last_message.content
-             
-        response = f"I received your message: '{msg_content}'. How can I assist you further?"
-        tool_calls = []
+    # Use Gateway to process message
+    response, tool_calls = llm_gateway.process_message(user_input_content)
     
     return {
         "messages": [{"role": "assistant", "content": response}],

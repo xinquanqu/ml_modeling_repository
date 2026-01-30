@@ -48,25 +48,17 @@ A simple agent service using FastAPI with LangGraph to manage the agent, featuri
 ```
 langgraph-agent/
 ├── backend/
-│   ├── __init__.py
-│   ├── main.py              # FastAPI app with LangGraph agent
+│   ├── app/                 # Modular application code
+│   │   ├── api/             # API Routers
+│   │   ├── models/          # Data models and schemas
+│   │   ├── services/        # Business logic and services
+│   │   └── main.py          # App entry point
+│   ├── venv/
 │   └── requirements.txt
 ├── frontend/
 │   ├── public/
-│   │   └── index.html
 │   ├── src/
-│   │   ├── components/
-│   │   │   ├── index.js
-│   │   │   ├── ChatPanel.jsx
-│   │   │   ├── GraphSidebar.jsx
-│   │   │   └── StateSidebar.jsx
-│   │   ├── hooks/
-│   │   │   ├── index.js
-│   │   │   └── useWebSocket.js
-│   │   ├── styles/
-│   │   │   └── App.css
-│   │   ├── App.jsx
-│   │   └── index.jsx
+│   ├── index.html           # Moved to root
 │   ├── package.json
 │   └── vite.config.js
 ├── .env.example
@@ -89,7 +81,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 # Run the server
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### Frontend
