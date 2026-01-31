@@ -8,6 +8,6 @@ async def root():
     return {"message": "LangGraph Agent Service", "status": "running"}
 
 @router.get("/graph")
-async def get_graph():
+async def get_graph(node_id: str = None):
     """Return the graph structure for visualization."""
-    return get_graph_structure()
+    return get_graph_structure(subgraph_id=node_id)

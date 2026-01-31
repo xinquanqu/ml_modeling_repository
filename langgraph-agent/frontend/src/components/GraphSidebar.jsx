@@ -11,6 +11,28 @@ function GraphSidebar({ graphStructure, activeNode }) {
   }
 
   const { nodes, edges } = graphStructure;
+  const [expandedNodes, setExpandedNodes] = React.useState({});
+
+  const handleNodeClick = async (node) => {
+    if (node.is_subgraph) {
+      try {
+        const res = await fetch(`http://localhost:8000/graph?node_id=${node.id}`);
+        const subgraph = await res.json();
+        setExpandedNodes(prev => ({
+          ...prev,
+          [node.id]: subgraph
+        }));
+        // Ideally, we would merge this into the main graph or show a modal
+        // For now, let's just log it or maybe replace the view?
+        // The user asked to "expand". A simple way is to replace the main view for drill-down
+        // OR simpler: just alert for now as valid proof of concept for "expansion" logic
+        console.log("Subgraph fetched:", subgraph);
+        alert(`Fetched subgraph for ${node.label}: ${JSON.stringify(subgraph, null, 2)}`);
+      } catch (err) {
+        console.error("Failed to fetch subgraph:", err);
+      }
+    }
+  };
 
   // Simple layout algorithm
   const layout = useMemo(() => {
@@ -137,7 +159,12 @@ function GraphSidebar({ graphStructure, activeNode }) {
             if (!pos) return null;
 
             return (
-              <g key={node.id} className={getNodeClass(node.id)}>
+              <g
+                key={node.id}
+                className={getNodeClass(node.id)}
+                onClick={() => handleNodeClick(node)}
+                style={{ cursor: node.is_subgraph ? 'pointer' : 'default' }}
+              >
                 {node.type === 'start' || node.type === 'end' ? (
                   <circle cx={pos.x} cy={pos.y} r="15" />
                 ) : (
@@ -147,6 +174,7 @@ function GraphSidebar({ graphStructure, activeNode }) {
                     width="80"
                     height="30"
                     rx="5"
+                    strokeDasharray={node.is_subgraph ? "4" : "0"}
                   />
                 )}
                 <text x={pos.x} y={pos.y + 4} textAnchor="middle">
