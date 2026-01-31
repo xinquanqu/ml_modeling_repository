@@ -1,10 +1,12 @@
 from app.services.gateway import llm_gateway
+from app.models import AgentState
+from typing import Literal
 
 def chatbot_node(state: AgentState) -> AgentState:
     """Main chatbot node - processes user input and generates responses."""
     messages = state["messages"]
     last_message = messages[-1] if messages else None
-    
+    print("last_message", last_message)
     # FIX: Check if it's a dict or object and access content accordingly
     if isinstance(last_message, dict):
         user_input_content = last_message.get("content", "")

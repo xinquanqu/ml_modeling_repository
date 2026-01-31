@@ -19,13 +19,16 @@ async def chat(request: ChatRequest):
     # Run the agent
     final_state = agent.invoke(initial_state)
     
-    # Extract the last assistant message
+    # Extract the last message safely
     messages = final_state.get("messages", [])
-    assistant_messages = [m for m in messages if m.role == "assistant"] # FIX: Use object access
-    # Use object access for content as well, with fallback if needed
-    if assistant_messages:
-        last_msg = assistant_messages[-1]
-        response_text = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
+    if messages:
+        last_msg = messages[-1]
+        if isinstance(last_msg, dict):
+            response_text = last_msg.get("content", "")
+        elif hasattr(last_msg, "content"):
+            response_text = last_msg.content
+        else:
+            response_text = str(last_msg)
     else:
         response_text = "No response"
         
@@ -49,7 +52,6 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             message_data = json.loads(data)
             user_message = message_data.get("message", "")
-            
             initial_state = {
                 "messages": [{"role": "user", "content": user_message}],
                 "current_node": "start",
@@ -68,6 +70,7 @@ async def websocket_endpoint(websocket: WebSocket):
             
             # Run the agent
             final_state = agent.invoke(initial_state)
+            print("final_state", final_state)
             
             # Send node transition updates
             await websocket.send_json({
@@ -90,10 +93,17 @@ async def websocket_endpoint(websocket: WebSocket):
                 })
                 await asyncio.sleep(0.2)
             
-            # Extract response
+            # Extract response safely
             messages = final_state.get("messages", [])
-            assistant_messages = [m for m in messages if hasattr(m, "role") and m.role == "assistant"]
-            response_text = "\n".join([m.content for m in assistant_messages])
+            response_text = ""
+            if messages:
+                last_msg = messages[-1]
+                if isinstance(last_msg, dict):
+                    response_text = last_msg.get("content", "")
+                elif hasattr(last_msg, "content"):
+                    response_text = last_msg.content
+                else:
+                    response_text = str(last_msg)
             
             await websocket.send_json({
                 "type": "response",

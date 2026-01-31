@@ -13,7 +13,7 @@ class LLMGateway:
         Returns a tuple: (response_text, tool_calls_list)
         """
         user_input = message.lower()
-        
+        print("user_input", user_input)
         # Mock logic (to be replaced with actual LLM call)
         if "weather" in user_input:
             response = "I'd need to check the weather tool for that. Let me look it up..."

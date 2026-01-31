@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 
 function GraphSidebar({ graphStructure, activeNode }) {
   if (!graphStructure) {
@@ -12,6 +12,66 @@ function GraphSidebar({ graphStructure, activeNode }) {
 
   const { nodes, edges } = graphStructure;
 
+  // Simple layout algorithm
+  const layout = useMemo(() => {
+    const nodePositions = {};
+    const levels = {};
+    const queue = [{ id: 'start', level: 0 }];
+    const visited = new Set(['start']);
+
+    // BFS to assign levels
+    while (queue.length > 0) {
+      const { id, level } = queue.shift();
+      levels[id] = Math.max(levels[id] || 0, level); // Keep max level if multiple paths
+
+      // Find neighbors
+      const neighbors = edges
+        .filter(e => e.from === id)
+        .map(e => e.to);
+
+      for (const neighbor of neighbors) {
+        if (!visited.has(neighbor)) {
+          // Allow re-visiting for level calculation? No, simple DAG assumption for now
+          visited.add(neighbor);
+          queue.push({ id: neighbor, level: level + 1 });
+        } else {
+          // If already visited, update level if deeper
+          queue.push({ id: neighbor, level: level + 1 });
+        }
+      }
+    }
+
+    // Group by level
+    const nodesByLevel = {};
+    Object.entries(levels).forEach(([id, level]) => {
+      if (!nodesByLevel[level]) nodesByLevel[level] = [];
+      nodesByLevel[level].push(id);
+    });
+
+    // Determine positions
+    // Canvas size (approx)
+    const centerX = 100;
+    const startY = 30;
+    const levelHeight = 70;
+
+    Object.entries(nodesByLevel).forEach(([level, nodeIds]) => {
+      const y = startY + (parseInt(level) * levelHeight);
+      const count = nodeIds.length;
+      const totalWidth = (count - 1) * 60; // 60px spacing
+      const startX = centerX - (totalWidth / 2);
+
+      nodeIds.forEach((id, idx) => {
+        nodePositions[id] = {
+          x: count === 1 ? centerX : startX + (idx * 60),
+          y: y
+        };
+      });
+    });
+
+    return nodePositions;
+  }, [nodes, edges]);
+
+
   const getNodeClass = (nodeId) => {
     const classes = ['graph-node'];
     if (activeNode === nodeId) classes.push('active');
@@ -23,23 +83,30 @@ function GraphSidebar({ graphStructure, activeNode }) {
   return (
     <aside className="sidebar graph-sidebar">
       <h2>Graph Structure</h2>
-      
+
       <div className="graph-visualization">
-        <svg viewBox="0 0 200 300" className="graph-svg">
+        <svg viewBox="0 0 200 400" className="graph-svg">
+          <defs>
+            <marker
+              id="arrowhead"
+              markerWidth="10"
+              markerHeight="7"
+              refX="9"
+              refY="3.5"
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3.5, 0 7" fill="#666" />
+            </marker>
+          </defs>
+
           {/* Edges */}
           {edges.map((edge, idx) => {
-            const positions = {
-              start: { x: 100, y: 30 },
-              chatbot: { x: 100, y: 100 },
-              tool_executor: { x: 160, y: 180 },
-              end: { x: 100, y: 260 },
-            };
-            const from = positions[edge.from];
-            const to = positions[edge.to];
+            const from = layout[edge.from];
+            const to = layout[edge.to];
             if (!from || !to) return null;
 
             const isActive = activeNode === edge.from || activeNode === edge.to;
-            
+
             return (
               <g key={idx}>
                 <line
@@ -55,6 +122,7 @@ function GraphSidebar({ graphStructure, activeNode }) {
                     x={(from.x + to.x) / 2 + 5}
                     y={(from.y + to.y) / 2}
                     className="edge-label"
+                    style={{ fontSize: '10px', fill: '#666' }}
                   >
                     {edge.label}
                   </text>
@@ -63,29 +131,9 @@ function GraphSidebar({ graphStructure, activeNode }) {
             );
           })}
 
-          {/* Arrow marker */}
-          <defs>
-            <marker
-              id="arrowhead"
-              markerWidth="10"
-              markerHeight="7"
-              refX="9"
-              refY="3.5"
-              orient="auto"
-            >
-              <polygon points="0 0, 10 3.5, 0 7" fill="#666" />
-            </marker>
-          </defs>
-
           {/* Nodes */}
           {nodes.map((node) => {
-            const positions = {
-              start: { x: 100, y: 30 },
-              chatbot: { x: 100, y: 100 },
-              tool_executor: { x: 160, y: 180 },
-              end: { x: 100, y: 260 },
-            };
-            const pos = positions[node.id];
+            const pos = layout[node.id];
             if (!pos) return null;
 
             return (
@@ -124,21 +172,6 @@ function GraphSidebar({ graphStructure, activeNode }) {
           <span className="legend-symbol conditional">- -</span>
           <span>Conditional</span>
         </div>
-      </div>
-
-      <div className="nodes-list">
-        <h3>Nodes</h3>
-        {nodes.map((node) => (
-          <div 
-            key={node.id} 
-            className={`node-item ${activeNode === node.id ? 'active' : ''}`}
-          >
-            <span className={`node-type ${node.type}`}>
-              {node.type === 'start' ? '▶' : node.type === 'end' ? '■' : '◆'}
-            </span>
-            <span className="node-label">{node.label}</span>
-          </div>
-        ))}
       </div>
     </aside>
   );

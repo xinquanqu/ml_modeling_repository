@@ -31,7 +31,7 @@ function ChatPanel({ messages, onSendMessage, isLoading, connectionStatus, onCle
       <header className="chat-header">
         <h1>LangGraph Agent</h1>
         <div className="header-actions">
-          <span 
+          <span
             className="connection-status"
             style={{ color: statusColor[connectionStatus] || '#888' }}
           >
@@ -85,8 +85,8 @@ function ChatPanel({ messages, onSendMessage, isLoading, connectionStatus, onCle
           placeholder="Type your message..."
           disabled={isLoading || connectionStatus !== 'connected'}
         />
-        <button 
-          type="submit" 
+        <button
+          type="submit"
           disabled={isLoading || !input.trim() || connectionStatus !== 'connected'}
         >
           Send
