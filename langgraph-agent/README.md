@@ -70,6 +70,15 @@ langgraph-agent/
 
 ### Backend
 
+### Backend (Docker)
+
+```bash
+# Run with Docker Compose
+docker-compose up --build
+```
+
+### Backend (Local)
+
 ```bash
 cd backend
 
