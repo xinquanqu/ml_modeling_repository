@@ -21,16 +21,12 @@ def test_graph_endpoint_subgraph(client):
         # But we expect 200 based on our manual verification
         assert response.status_code == 200
 
-def test_chat_endpoint(client, mock_llm_gateway):
+def test_chat_endpoint(client, mock_agent):
     """Test full chat flow"""
-    # Setup mock
-    mock_llm_gateway.process_message.return_value = ("Hello from mock", [])
+    # mock_agent fixture already sets up side_effect for async invoke
+    # returning "Mocked Response"
     
     payload = {"message": "Hi there"}
-    # The router now uses get_agent() -> get_gateway()
-    # verify_gateway mock in conftest patches get_gateway() so the agent instantiated
-    # within the router (or cached) will use our mock gateway via set_gateway
-    
     response = client.post("/chat", json=payload)
     
     assert response.status_code == 200
@@ -40,10 +36,8 @@ def test_chat_endpoint(client, mock_llm_gateway):
     assert "response" in data
     assert "state" in data
     
-    # Check content
-    # The API might be returning the last message content or the full state
-    # Let's check based on typical response "response": "Hello from mock"
-    assert data["response"] == "Hello from mock"
+    # Check content from mock_agent
+    assert data["response"] == "Mocked Response"
     
     # Verify mock was called
-    mock_llm_gateway.process_message.assert_called()
+    mock_agent.invoke.assert_called()

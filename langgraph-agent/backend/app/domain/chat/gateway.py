@@ -1,31 +1,46 @@
 from typing import Any, Dict, List, Tuple
-from app.platform.interfaces import GatewayBase
+from app.platform.interfaces import GatewayBase, LLMClient
 
 class ChatGateway(GatewayBase):
     """Gateway implementation for the Chat domain."""
     
-    def __init__(self):
-        pass
+    def __init__(self, llm_client: LLMClient):
+        self.llm_client = llm_client
+        self.tools = [
+            {
+                "name": "weather",
+                "description": "Get current weather for a location",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "The city and state, e.g. San Francisco, CA"}
+                    },
+                    "required": ["query"]
+                }
+            },
+            {
+                "name": "search",
+                "description": "Search the web for information",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "The search query"}
+                    },
+                    "required": ["query"]
+                }
+            }
+        ]
 
-    def process_message(self, message: str) -> Tuple[str, List[Dict[str, Any]]]:
+    def process_message(self, message: str, callbacks: List[Any] = None) -> Tuple[str, List[Dict[str, Any]]]:
         """
         Process incoming user message and determine response/tool calls.
         Returns a tuple: (response_text, tool_calls_list)
         """
-        user_input = message.lower()
-        print("user_input", user_input)
-        # Mock logic
-        if "weather" in user_input:
-            response = "I'd need to check the weather tool for that. Let me look it up..."
-            tool_calls = [{"tool": "weather", "args": {"query": user_input}}]
-        elif "search" in user_input:
-            response = "Let me search for that information..."
-            tool_calls = [{"tool": "search", "args": {"query": user_input}}]
-        elif "help" in user_input:
-            response = "I can help you with: weather queries, web searches, and general conversation!"
-            tool_calls = []
-        else:
-            response = f"I received your message: '{message}'. How can I assist you further?"
-            tool_calls = []
-            
-        return response, tool_calls
+        # Construct simplified message history for single turn
+        # In a real app, this might accept the full history or `state`
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": message}
+        ]
+        
+        return self.llm_client.generate_response(messages, tools=self.tools, callbacks=callbacks)

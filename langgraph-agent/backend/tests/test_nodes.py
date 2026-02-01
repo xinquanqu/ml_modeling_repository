@@ -1,6 +1,7 @@
-from app.domain.chat.nodes import chatbot_node, tool_executor_node, should_use_tools, set_gateway
+from unittest.mock import MagicMock, patch
+from langchain_core.messages import HumanMessage, AIMessage
+from app.domain.chat.nodes import chatbot_node, tool_executor_node, gateway_instance, should_use_tools, set_gateway
 from app.models import AgentState
-from unittest.mock import MagicMock
 import pytest
 
 # We need to ensure the node has the gateway set for testing
@@ -44,7 +45,8 @@ def test_chatbot_node_with_tools(mock_llm_gateway):
     
     # Verify
     assert new_state["tool_calls"] == tool_calls_mock
-    assert new_state["messages"][0]["content"] == "Checking weather..."
+    # AIMessage object access
+    assert new_state["messages"][0].content == "Checking weather..."
 
 def test_tool_executor_node_weather():
     """Test tool execution logic"""

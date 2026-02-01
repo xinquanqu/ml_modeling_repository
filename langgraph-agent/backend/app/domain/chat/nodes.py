@@ -1,6 +1,8 @@
-from app.domain.chat.gateway import ChatGateway
+from typing import Dict, Any, List, Literal
+from langchain_core.messages import AIMessage
+from langchain_core.runnables import RunnableConfig
 from app.models import AgentState
-from typing import Literal
+from app.domain.chat.gateway import ChatGateway
 
 # We will let the container wire this up, but for now we might need a way to pass it in.
 # To keep signatures compatible with LangGraph (state -> state), we'll assume a global or injected instance.
@@ -13,10 +15,13 @@ def set_gateway(gateway: ChatGateway):
     global gateway_instance
     gateway_instance = gateway
 
-def chatbot_node(state: AgentState) -> AgentState:
-    """Main chatbot node - processes user input and generates responses."""
-    messages = state["messages"]
-    last_message = messages[-1] if messages else None
+def chatbot_node(state: AgentState, config: RunnableConfig = None) -> Dict[str, Any]:
+    """Node that handles chatbot interaction."""
+    messages = state.get("messages", [])
+    if not messages:
+        return {}
+        
+    last_message = messages[-1]
     
     # FIX: Check if it's a dict or object and access content accordingly
     if isinstance(last_message, dict):
@@ -25,18 +30,28 @@ def chatbot_node(state: AgentState) -> AgentState:
         user_input_content = last_message.content
     else:
         user_input_content = ""
+        
+    # Extract callbacks
+    callbacks = config.get("callbacks") if config else None
     
     # Use Gateway to process message
-    # Error handling if gateway isn't set?
     if gateway_instance:
-        response, tool_calls = gateway_instance.process_message(user_input_content)
+        response_text, tool_calls = gateway_instance.process_message(user_input_content, callbacks=callbacks)
     else:
          # Fallback if not wired (shouldn't happen in prod)
-         response = "System Error: Gateway not initialized."
+         response_text = "System Error: Gateway not initialized."
          tool_calls = []
 
+    new_messages = [AIMessage(content=response_text)]
+    
+    if tool_calls:
+        # If tools are called, we should ideally represent them.
+        # For this simplified node, we just append the AI message.
+        # In a real tool use case, we'd add tool_calls to the message.
+        pass
+        
     return {
-        "messages": [{"role": "assistant", "content": response}],
+        "messages": new_messages,
         "current_node": "chatbot",
         "tool_calls": tool_calls,
         "iteration": state.get("iteration", 0) + 1,

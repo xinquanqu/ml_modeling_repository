@@ -1,27 +1,32 @@
+from unittest.mock import MagicMock
 from app.domain.chat.gateway import ChatGateway
+from app.platform.interfaces import LLMClient
 
-def test_gateway_process_message_weather():
-    """Test weather query routing"""
-    gateway = ChatGateway()
-    response, tool_calls = gateway.process_message("What is the weather?")
+def test_gateway_delegates_to_llm_client():
+    """Test that ChatGateway delegates generation to the LLM Client."""
+    # Setup Mock Client
+    mock_client = MagicMock(spec=LLMClient)
+    expected_response = "Mocked Response"
+    expected_tools = [{"tool": "test", "args": {}}]
+    mock_client.generate_response.return_value = (expected_response, expected_tools)
     
-    assert "weather" in response.lower() or "check" in response.lower()
-    assert len(tool_calls) == 1
-    assert tool_calls[0]["tool"] == "weather"
-
-def test_gateway_process_message_search():
-    """Test search query routing"""
-    gateway = ChatGateway()
-    response, tool_calls = gateway.process_message("search for python")
+    # Instantiate Gateway with Mock
+    gateway = ChatGateway(mock_client)
     
-    assert "search" in response.lower()
-    assert len(tool_calls) == 1
-    assert tool_calls[0]["tool"] == "search"
-
-def test_gateway_process_message_general():
-    """Test general chat routing"""
-    gateway = ChatGateway()
+    # Execute
     response, tool_calls = gateway.process_message("hello")
     
-    assert tool_calls == []
-    assert "received your message" in response.lower()
+    # Verify
+    assert response == expected_response
+    assert tool_calls == expected_tools
+    
+    # Verify call arguments
+    mock_client.generate_response.assert_called_once()
+    args, kwargs = mock_client.generate_response.call_args
+    messages = args[0]
+    tools = kwargs.get("tools")
+    
+    assert len(messages) == 2
+    assert messages[1]["content"] == "hello"
+    assert len(tools) == 2
+    assert tools[0]["name"] == "weather"

@@ -1,48 +1,57 @@
 import json
 import asyncio
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from app.models import ChatRequest, ChatResponse
-from app.dependencies import get_agent
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException
+from app.models import ChatRequest, ChatResponse, AgentState
+from app.dependencies import get_agent, AgentBase
+from langchain_core.messages import HumanMessage
 
 router = APIRouter()
 
+from app.infrastructure.observability import get_langfuse_handler
+
 @router.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
-    """Process a chat message through the agent."""
-    agent = get_agent()
-    
-    initial_state = {
-        "messages": [{"role": "user", "content": request.message}],
-        "current_node": "start",
-        "tool_calls": [],
-        "iteration": 0,
-    }
-    
-    # Run the agent
-    final_state = agent.invoke(initial_state)
-    
-    # Extract the last message safely
-    messages = final_state.get("messages", [])
-    if messages:
-        last_msg = messages[-1]
-        if isinstance(last_msg, dict):
-            response_text = last_msg.get("content", "")
-        elif hasattr(last_msg, "content"):
-            response_text = last_msg.content
-        else:
-            response_text = str(last_msg)
-    else:
-        response_text = "No response"
+async def chat_endpoint(request: ChatRequest, agent: AgentBase = Depends(get_agent)):
+    """
+    Chat endpoint that processes user messages using the injected agent.
+    """
+    try:
+        # Initialize Langfuse Handler
+        # Use session_id if provided, else thread_id
+        session_id = request.thread_id or "default_session"
+        langfuse_handler = get_langfuse_handler(session_id=session_id)
         
-    return ChatResponse(
-        response=response_text,
-        state={
-            "current_node": final_state.get("current_node", "unknown"),
-            "iteration": final_state.get("iteration", 0),
-            "tool_calls": final_state.get("tool_calls", []),
-            "message_count": len(messages),
+        callbacks = [langfuse_handler] if langfuse_handler else []
+        config = {
+            "configurable": {"thread_id": request.thread_id or "1"},
+            "callbacks": callbacks
         }
-    )
+        
+        # Prepare state
+        initial_state = AgentState(
+            messages=[HumanMessage(content=request.message)],
+            current_node="start",
+            tool_calls=[],
+            iteration=0
+        )
+        
+        # Invoke agent
+        final_state = await agent.invoke(initial_state, config=config)
+        
+        # Extract response
+        messages = final_state.get("messages", [])
+        last_message = messages[-1] if messages else None
+        response_text = last_message.content if last_message else "No response generated."
+        
+        # If last message is AIMessage, check for tool calls? 
+        # But we return text.
+        
+        return ChatResponse(
+            response=response_text,
+            thread_id=request.thread_id or "1"
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

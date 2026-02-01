@@ -6,9 +6,12 @@ from functools import lru_cache
 
 # Simple Dependency Injection Container
 
+from app.infrastructure.llm.factory import get_llm_client
+
 @lru_cache()
 def get_gateway() -> GatewayBase:
-    return ChatGateway()
+    llm_client = get_llm_client()
+    return ChatGateway(llm_client)
 
 @lru_cache()
 def get_agent() -> AgentBase:

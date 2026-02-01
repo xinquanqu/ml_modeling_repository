@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -36,10 +36,18 @@ class ChatAgent(AgentBase):
         memory = MemorySaver()
         return workflow.compile(checkpointer=memory)
         
-    def invoke(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Invoke the agent."""
-        config = {"configurable": {"thread_id": "1"}}
-        return self.graph.invoke(state, config=config)
+    async def invoke(self, state: Dict[str, Any], config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Run the graph with the provided state.
+        Args:
+            state: The initial state dictionary.
+            config: Optional LangChain config (callbacks, etc).
+        Returns:
+            The final state dictionary.
+        """
+        # Await the graph execution since it's an async graph
+        # Passing config enables tracing if callbacks are present
+        return await self.graph.ainvoke(state, config=config)
 
     def get_graph_structure(self, subgraph_id: str = None) -> Dict[str, Any]:
         """Dynamically inspect the LangGraph structure."""

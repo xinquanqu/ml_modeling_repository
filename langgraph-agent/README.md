@@ -128,6 +128,26 @@ npm run dev
   - Node transitions
   - State snapshots
 
+## Observability
+
+This project integrates [Langfuse](https://langfuse.com/) for tracing and observability.
+
+### Getting Started
+
+When running via Docker Compose (`docker-compose up --build`), the Langfuse server and database are automatically started.
+
+1.  **Access Langfuse**: Open `http://localhost:3000` in your browser.
+2.  **Create Account/Login**: You can create an account locally to access the dashboard.
+3.  **View Traces**: Any chat interaction via the frontend or API will automatically generate traces in Langfuse, linking the Router, Agent, and LLM calls.
+
+### Configuration
+
+The backend connects to Langfuse using the following environment variables (configured in `docker-compose.yml`):
+
+*   `LANGFUSE_SECRET_KEY`: Service API key (Secret)
+*   `LANGFUSE_PUBLIC_KEY`: Service API key (Public)
+*   `LANGFUSE_HOST`: URL of the Langfuse server (e.g., `http://langfuse-server:3000`)
+
 ## API Endpoints
 
 ### REST API

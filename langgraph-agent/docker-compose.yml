@@ -11,4 +11,37 @@ services:
       - ./backend:/app
     environment:
       - PYTHONUNBUFFERED=1
+      - LANGFUSE_SECRET_KEY=sk-lf-public
+      - LANGFUSE_PUBLIC_KEY=pk-lf-public
+      - LANGFUSE_HOST=http://langfuse-server:3000
     restart: always
+    depends_on:
+      - langfuse-server
+
+  langfuse-server:
+    image: langfuse/langfuse:latest
+    depends_on:
+      - langfuse-db
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@langfuse-db:5432/postgres
+      - NEXTAUTH_URL=http://localhost:3000
+      - NEXTAUTH_SECRET=mysecret
+      - SALT=mysalt
+    restart: always
+
+  langfuse-db:
+    image: postgres:16
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - langfuse_db_data:/var/lib/postgresql/data
+
+volumes:
+  langfuse_db_data:
