@@ -149,6 +149,8 @@ The observability pipeline follows the request lifecycle to ensure complete trac
 
 ### Traces Recording & Analysis
 
+The Docker setup launches **Langfuse**, **Postgres**, and **ClickHouse** (required for V3 analytics).
+
 Once the system is running:
 
 1.  **Access the Dashboard**: Go to `http://localhost:3333`.

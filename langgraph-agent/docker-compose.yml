@@ -29,6 +29,9 @@ services:
       - NEXTAUTH_URL=http://localhost:3333
       - NEXTAUTH_SECRET=mysecret
       - SALT=mysalt
+      - CLICKHOUSE_URL=http://clickhouse:8123
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=clickhouse
     restart: always
 
   langfuse-db:
@@ -43,5 +46,20 @@ services:
     volumes:
       - langfuse_db_data:/var/lib/postgresql/data
 
+  clickhouse:
+    image: clickhouse/clickhouse-server
+    restart: always
+    environment:
+      - CLICKHOUSE_DB=default
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=clickhouse
+      - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+
 volumes:
   langfuse_db_data:
+  clickhouse_data:
