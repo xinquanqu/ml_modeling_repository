@@ -23,10 +23,10 @@ services:
     depends_on:
       - langfuse-db
     ports:
-      - "3000:3000"
+      - "3333:3000"
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@langfuse-db:5432/postgres
-      - NEXTAUTH_URL=http://localhost:3000
+      - NEXTAUTH_URL=http://localhost:3333
       - NEXTAUTH_SECRET=mysecret
       - SALT=mysalt
     restart: always

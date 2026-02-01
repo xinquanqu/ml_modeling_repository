@@ -151,7 +151,7 @@ The observability pipeline follows the request lifecycle to ensure complete trac
 
 Once the system is running:
 
-1.  **Access the Dashboard**: Go to `http://localhost:3000`.
+1.  **Access the Dashboard**: Go to `http://localhost:3333`.
 2.  **View Traces**: Navigate to the "Traces" tab. You will see a list of executed chains.
 3.  **Analyze a Trace**: Click on a trace to see the waterfall view:
     *   **Root Span**: The overall API request / Agent run.
@@ -167,7 +167,7 @@ The backend connects to Langfuse using the following environment variables (conf
 
 *   `LANGFUSE_SECRET_KEY`: Service API key (Secret)
 *   `LANGFUSE_PUBLIC_KEY`: Service API key (Public)
-*   `LANGFUSE_HOST`: URL of the Langfuse server (e.g., `http://langfuse-server:3000`)
+*   `LANGFUSE_HOST`: URL of the Langfuse server (internal Docker URL: `http://langfuse-server:3000`, browser URL: `http://localhost:3333`)
 
 ## API Endpoints
 
