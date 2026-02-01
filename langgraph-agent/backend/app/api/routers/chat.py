@@ -2,13 +2,15 @@ import json
 import asyncio
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.models import ChatRequest, ChatResponse
-from app.services import agent
+from app.dependencies import get_agent
 
 router = APIRouter()
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """Process a chat message through the agent."""
+    agent = get_agent()
+    
     initial_state = {
         "messages": [{"role": "user", "content": request.message}],
         "current_node": "start",
@@ -69,6 +71,7 @@ async def websocket_endpoint(websocket: WebSocket):
             await asyncio.sleep(0.3)  # Simulate processing
             
             # Run the agent
+            agent = get_agent()
             final_state = agent.invoke(initial_state)
             print("final_state", final_state)
             
