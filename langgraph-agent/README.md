@@ -18,28 +18,23 @@ A simple agent service using FastAPI with LangGraph to manage the agent, featuri
 ┌─────────────────────────────────────────────────────────────────┐
 │                      Backend (FastAPI)                          │
 ├─────────────────────────────────────────────────────────────────┤
-│  Endpoints:                                                      │
-│  - GET  /        → Health check                                 │
-│  - GET  /graph   → Graph structure                              │
-│  - POST /chat    → Process message                              │
-│  - WS   /ws      → Real-time streaming                          │
-└─────────────────────────────────────────────────────────────────┘
+│  Endpoints: /graph, /chat, /ws                                  │
+│  Instrumentation: Langfuse Callback Handler                     │
+└─────────────────────────────┬───────────────────────────────────┘
                               │
                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      LangGraph Agent                            │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│   ┌─────────┐     ┌──────────┐     ┌────────────────┐           │
-│   │  START  │────▶│ Chatbot  │────▶│ Tool Executor  │           │
-│   └─────────┘     └──────────┘     └────────────────┘           │
-│                        │                    │                    │
-│                        │ (no tools)         │                    │
+┌─────────────────────────────────────────────────────────────────┐       ┌──────────────────┐
+│                      LangGraph Agent                            │──────▶│     Langfuse     │
+├─────────────────────────────────────────────────────────────────┤       │ (Observability)  │
+│                                                                  │       │                  │
+│   ┌─────────┐     ┌──────────┐     ┌────────────────┐           │       │  - Traces        │
+│   │  START  │────▶│ Chatbot  │────▶│ Tool Executor  │           │       │  - Metrics       │
+│   └─────────┘     └──────────┘     └────────────────┘           │       │  - Evaluation    │
+│                        │                    │                    │       └──────────────────┘
 │                        ▼                    ▼                    │
 │                   ┌─────────┐          ┌─────────┐              │
 │                   │   END   │◀─────────│   END   │              │
 │                   └─────────┘          └─────────┘              │
-│                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -130,15 +125,41 @@ npm run dev
 
 ## Observability
 
-This project integrates [Langfuse](https://langfuse.com/) for tracing and observability.
+This project integrates [Langfuse](https://langfuse.com/) for deep tracing and observability of the agentic workflows.
 
-### Getting Started
+### Architecture & Orchestration
 
-When running via Docker Compose (`docker-compose up --build`), the Langfuse server and database are automatically started.
+The observability pipeline follows the request lifecycle to ensure complete trace visibility:
 
-1.  **Access Langfuse**: Open `http://localhost:3000` in your browser.
-2.  **Create Account/Login**: You can create an account locally to access the dashboard.
-3.  **View Traces**: Any chat interaction via the frontend or API will automatically generate traces in Langfuse, linking the Router, Agent, and LLM calls.
+1.  **Initialization (`ChatRouter`)**:
+    *   When a request hits `/chat` or `/ws`, a `LangfuseCallbackHandler` is initialized with the trace context (e.g., `session_id`, `user_id`).
+    *   This handler acts as the root of the trace.
+
+2.  **Agent Execution (`ChatAgent`)**:
+    *   The handler is passed to the LangGraph execution via `config={"callbacks": [handler]}`.
+    *   LangGraph automatically traces the execution flow, recording node transitions (`chatbot` -> `tool_executor`) as spans.
+
+3.  **Component Tracing (`Gateway` & `Nodes`)**:
+    *   Inside the nodes (e.g., `chatbot_node`), the `callbacks` are extracted from the config.
+    *   These callbacks are propagated to the `ChatGateway` and subsequently to the `LLMClient`.
+
+4.  **LLM Generation (`LLMClient`)**:
+    *   The LLM adapter (OpenAI, Gemini, etc.) receives the callbacks.
+    *   The actual LLM generation (prompt, completion, token usage, latency) is recorded as a generation span attached to the parent trace.
+
+### Traces Recording & Analysis
+
+Once the system is running:
+
+1.  **Access the Dashboard**: Go to `http://localhost:3000`.
+2.  **View Traces**: Navigate to the "Traces" tab. You will see a list of executed chains.
+3.  **Analyze a Trace**: Click on a trace to see the waterfall view:
+    *   **Root Span**: The overall API request / Agent run.
+    *   **Graph Spans**: Sub-spans for each LangGraph node execution.
+    *   **Generation Spans**: Detailed view of the LLM interaction including:
+        *   **Input**: The exact prompt sent to the model (including system prompts and history).
+        *   **Output**: The model's raw response.
+        *   **Metadata**: Token usage (input/output), cost, and latency.
 
 ### Configuration
 
