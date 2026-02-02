@@ -62,8 +62,13 @@ async def websocket_endpoint(websocket: WebSocket):
     thread_id = str(uuid.uuid4())
     
     try:
+        # Initialize Langfuse for this WS session
+        langfuse_handler = get_langfuse_handler(session_id=thread_id)
+        callbacks = [langfuse_handler] if langfuse_handler else []
+
         while True:
             data = await websocket.receive_text()
+            print(data)
             message_data = json.loads(data)
             user_message = message_data.get("message", "")
             initial_state = {
@@ -84,7 +89,10 @@ async def websocket_endpoint(websocket: WebSocket):
             
             # Run the agent
             agent = get_agent()
-            config = {"configurable": {"thread_id": thread_id}}
+            config = {
+                "configurable": {"thread_id": thread_id},
+                "callbacks": callbacks
+            }
             final_state = await agent.invoke(initial_state, config=config)
             
             # Send node transition updates
