@@ -5,8 +5,10 @@ import StateSidebar from './components/StateSidebar';
 import { useWebSocket } from './hooks/useWebSocket';
 import './styles/App.css';
 
-const API_URL = 'http://localhost:8000';
-const WS_URL = 'ws://localhost:8000/ws';
+// Use relative path for API to leverage Vite proxy (in dev) or Nginx (in prod)
+const API_URL = '/api';
+// Construct WebSocket URL based on current host to use proxy
+const WS_URL = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
 
 function App() {
   const [messages, setMessages] = useState([]);
@@ -33,6 +35,14 @@ function App() {
     if (lastMessage.type === 'state_update') {
       setActiveNode(lastMessage.node);
       setCurrentState(lastMessage.state);
+
+      // Update loading status based on node
+      if (lastMessage.node === 'end') {
+        setIsLoading(false);
+      } else {
+        setIsLoading(true);
+      }
+
       setStateHistory(prev => [...prev, {
         timestamp: new Date().toISOString(),
         node: lastMessage.node,
@@ -46,6 +56,13 @@ function App() {
       setCurrentState(lastMessage.final_state);
       setActiveNode('end');
       setIsLoading(false);
+    } else if (lastMessage.type === 'error') {
+      console.error('Backend error:', lastMessage.error);
+      setIsLoading(false);
+      setMessages(prev => [...prev, {
+        role: 'system',
+        content: `Error: ${lastMessage.error}`,
+      }]);
     }
   }, [lastMessage]);
 
@@ -67,18 +84,19 @@ function App() {
 
   return (
     <div className="app">
-      <GraphSidebar 
-        graphStructure={graphStructure} 
+      <GraphSidebar
+        graphStructure={graphStructure}
         activeNode={activeNode}
       />
       <ChatPanel
         messages={messages}
         onSendMessage={handleSendMessage}
         isLoading={isLoading}
+        activeNode={activeNode}
         connectionStatus={connectionStatus}
         onClear={clearChat}
       />
-      <StateSidebar 
+      <StateSidebar
         currentState={currentState}
         stateHistory={stateHistory}
         activeNode={activeNode}

@@ -3,9 +3,7 @@ FROM python:3.11-slim
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    # UV optimization
-    UV_SYSTEM_PYTHON=1
+    PYTHONUNBUFFERED=1
 
 # Set the working directory in the container
 WORKDIR /app
@@ -16,9 +14,11 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 # Copy the requirements file into the container
 COPY requirements.txt .
 
-# Install any needed packages specified in requirements.txt using uv
+# Install any needed packages specified in requirements.txt
+# Use cache mount to speed up install
 # --system installs into the system python, avoiding venv creation overhead for docker
-RUN uv pip install -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system --no-cache -r requirements.txt
 
 # Copy the rest of the application code
 COPY . .

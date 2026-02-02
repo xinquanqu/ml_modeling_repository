@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 
-function ChatPanel({ messages, onSendMessage, isLoading, connectionStatus, onClear }) {
+function ChatPanel({ messages, onSendMessage, isLoading, activeNode, connectionStatus, onClear }) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef(null);
 
@@ -71,6 +71,7 @@ function ChatPanel({ messages, onSendMessage, isLoading, connectionStatus, onCle
               <div className="typing-indicator">
                 <span></span><span></span><span></span>
               </div>
+              {activeNode && <div className="node-status-text">Working on: {activeNode}</div>}
             </div>
           </div>
         )}
