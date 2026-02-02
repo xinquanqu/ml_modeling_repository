@@ -15,7 +15,7 @@ def set_gateway(gateway: ChatGateway):
     global gateway_instance
     gateway_instance = gateway
 
-def chatbot_node(state: AgentState, config: RunnableConfig = None) -> Dict[str, Any]:
+async def chatbot_node(state: AgentState, config: RunnableConfig = None) -> Dict[str, Any]:
     """Node that handles chatbot interaction."""
     messages = state.get("messages", [])
     if not messages:
@@ -57,7 +57,7 @@ def chatbot_node(state: AgentState, config: RunnableConfig = None) -> Dict[str, 
         "iteration": state.get("iteration", 0) + 1,
     }
 
-def tool_executor_node(state: AgentState) -> AgentState:
+async def tool_executor_node(state: AgentState) -> AgentState:
     """Executes tools requested by the chatbot."""
     tool_calls = state.get("tool_calls", [])
     results = []

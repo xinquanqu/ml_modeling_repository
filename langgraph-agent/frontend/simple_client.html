@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple LangGraph Agent Client</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            height: 90vh;
+        }
+
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+        }
+
+        h2 {
+            margin-top: 0;
+        }
+
+        /* Chat Styles */
+        #chat-history {
+            flex: 1;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            margin-bottom: 10px;
+            background: #fafafa;
+        }
+
+        .message {
+            margin-bottom: 8px;
+            padding: 8px;
+            border-radius: 4px;
+            max-width: 80%;
+        }
+
+        .message.user {
+            background-color: #e3f2fd;
+            align-self: flex-end;
+            margin-left: auto;
+        }
+
+        .message.assistant {
+            background-color: #fff;
+            border: 1px solid #ddd;
+        }
+
+        .message.system {
+            background-color: #eee;
+            font-style: italic;
+            font-size: 0.9em;
+            text-align: center;
+            max-width: 100%;
+        }
+
+        .input-area {
+            display: flex;
+            gap: 10px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        button {
+            padding: 8px 16px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        button:disabled {
+            background-color: #ccc;
+        }
+
+        /* Graph & State Styles */
+        #graph-data,
+        #current-state {
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            overflow: auto;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            flex: 1;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .status-connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .status-disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>LangGraph Agent - Simple Client</h1>
+
+    <div class="container">
+        <!-- Left Column: Chat -->
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h2>Chat</h2>
+                <span id="connection-status" class="status-badge status-disconnected">Disconnected</span>
+            </div>
+
+            <div id="chat-history"></div>
+
+            <div class="input-area">
+                <input type="text" id="message-input" placeholder="Type a message..." disabled>
+                <button id="send-btn" disabled>Send</button>
+            </div>
+            <div style="margin-top: 10px;">
+                <button id="connect-btn">Connect WebSocket</button>
+            </div>
+        </div>
+
+        <!-- Right Column: Graph & State -->
+        <div class="card">
+            <h2>Current State</h2>
+            <div id="current-state">Waiting for updates...</div>
+
+            <h2 style="margin-top: 20px;">Graph Structure</h2>
+            <div style="margin-bottom: 10px;">
+                <button onclick="fetchGraph()">Fetch Graph JSON</button>
+            </div>
+            <div id="graph-data">Click 'Fetch Graph JSON' to load...</div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://127.0.0.1:8000'; // Direct backend URL (CORS needed on backend or proxy)
+        const WS_URL = 'ws://127.0.0.1:8000/ws';
+
+        let socket = null;
+        const chatHistory = document.getElementById('chat-history');
+        const messageInput = document.getElementById('message-input');
+        const sendBtn = document.getElementById('send-btn');
+        const connectBtn = document.getElementById('connect-btn');
+        const statusBadge = document.getElementById('connection-status');
+        const currentStateDiv = document.getElementById('current-state');
+
+        function appendMessage(text, role) {
+            const div = document.createElement('div');
+            div.className = `message ${role}`;
+            div.textContent = text;
+            chatHistory.appendChild(div);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+
+        function updateState(state) {
+            currentStateDiv.textContent = JSON.stringify(state, null, 2);
+        }
+
+        function setConnected(connected) {
+            if (connected) {
+                statusBadge.textContent = 'Connected';
+                statusBadge.className = 'status-badge status-connected';
+                messageInput.disabled = false;
+                sendBtn.disabled = false;
+                connectBtn.textContent = 'Disconnect';
+            } else {
+                statusBadge.textContent = 'Disconnected';
+                statusBadge.className = 'status-badge status-disconnected';
+                messageInput.disabled = true;
+                sendBtn.disabled = true;
+                connectBtn.textContent = 'Connect WebSocket';
+            }
+        }
+
+        function connect() {
+            if (socket) {
+                socket.close();
+                socket = null;
+                setConnected(false);
+                return;
+            }
+
+            try {
+                appendMessage('Connecting...', 'system');
+                socket = new WebSocket(WS_URL);
+
+                socket.onopen = () => {
+                    appendMessage('Connected to server', 'system');
+                    setConnected(true);
+                };
+
+                socket.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    console.log('WS Message:', data);
+
+                    if (data.type === 'response') {
+                        appendMessage(data.content, 'assistant');
+                        if (data.final_state) updateState(data.final_state);
+                    } else if (data.type === 'state_update') {
+                        updateState(data.state);
+                        // Optionally show node transitions
+                        if (data.node) {
+                            // appendMessage(`Transition to node: ${data.node}`, 'system');
+                        }
+                    } else if (data.type === 'error') {
+                        appendMessage(`Error: ${data.error}`, 'system');
+                    }
+                };
+
+                socket.onclose = (event) => {
+                    console.log('WebSocket closed:', event);
+                    appendMessage(`Connection closed (Code: ${event.code}, Reason: ${event.reason || 'No reason'})`, 'system');
+                    setConnected(false);
+                    socket = null;
+                };
+
+                socket.onerror = (err) => {
+                    console.error('WebSocket error:', err);
+                    appendMessage('Connection error occurred', 'system');
+                    setConnected(false);
+                };
+            } catch (e) {
+                console.error(e);
+                appendMessage(`Connection failed: ${e.message}`, 'system');
+            }
+        }
+
+        function sendMessage() {
+            const text = messageInput.value.trim();
+            if (!text || !socket) return;
+
+            socket.send(JSON.stringify({ message: text }));
+            appendMessage(text, 'user');
+            messageInput.value = '';
+        }
+
+        async function fetchGraph() {
+            const graphDiv = document.getElementById('graph-data');
+            graphDiv.textContent = 'Loading...';
+            try {
+                const res = await fetch(`${API_URL}/graph`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                graphDiv.textContent = JSON.stringify(data, null, 2);
+            } catch (e) {
+                graphDiv.textContent = `Error fetching graph: ${e.message}. \nNote: Ensure backend allows CORS if running different ports.`;
+            }
+        }
+
+        // Event Listeners
+        connectBtn.onclick = connect;
+        sendBtn.onclick = sendMessage;
+        messageInput.onkeypress = (e) => {
+            if (e.key === 'Enter') sendMessage();
+        };
+
+        // Auto-connect on load
+        window.addEventListener('load', () => {
+            // Check if backend is likely available then connect
+            fetchGraph(); // Try to fetch graph immediately
+            // Optionally auto connect WS
+            // connect(); 
+        });
+    </script>
+</body>
+
+</html>

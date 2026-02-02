@@ -1,6 +1,8 @@
 import json
 import asyncio
+import uuid
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException
+from fastapi.encoders import jsonable_encoder
 from app.models import ChatRequest, ChatResponse, AgentState
 from app.dependencies import get_agent, AgentBase
 from langchain_core.messages import HumanMessage
@@ -57,6 +59,7 @@ async def chat_endpoint(request: ChatRequest, agent: AgentBase = Depends(get_age
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for streaming agent responses."""
     await websocket.accept()
+    thread_id = str(uuid.uuid4())
     
     try:
         while True:
@@ -71,21 +74,21 @@ async def websocket_endpoint(websocket: WebSocket):
             }
             
             # Stream state updates
-            await websocket.send_json({
+            await websocket.send_json(jsonable_encoder({
                 "type": "state_update",
                 "node": "start",
                 "state": initial_state,
-            })
+            }))
             
             await asyncio.sleep(0.3)  # Simulate processing
             
             # Run the agent
             agent = get_agent()
-            final_state = agent.invoke(initial_state)
-            print("final_state", final_state)
+            config = {"configurable": {"thread_id": thread_id}}
+            final_state = await agent.invoke(initial_state, config=config)
             
             # Send node transition updates
-            await websocket.send_json({
+            await websocket.send_json(jsonable_encoder({
                 "type": "state_update",
                 "node": "chatbot",
                 "state": {
@@ -93,7 +96,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     "iteration": final_state.get("iteration", 0),
                     "tool_calls": final_state.get("tool_calls", []),
                 }
-            })
+            }))
             
             await asyncio.sleep(0.2)
             
@@ -117,7 +120,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 else:
                     response_text = str(last_msg)
             
-            await websocket.send_json({
+            await websocket.send_json(jsonable_encoder({
                 "type": "response",
                 "content": response_text,
                 "final_state": {
@@ -127,7 +130,15 @@ async def websocket_endpoint(websocket: WebSocket):
                     # Simple check for tool calls in message representation
                     "tool_calls_made": len([m for m in messages if "tool" in str(m).lower()]),
                 }
-            })
+            }))
             
     except WebSocketDisconnect:
         print("Client disconnected")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"Error in websocket loop: {e}")
+        try:
+            await websocket.close(code=1011)
+        except:
+            pass

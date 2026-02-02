@@ -1,6 +1,81 @@
 import React, { useMemo } from 'react';
 
+// Simple DAG layout: Level-based
+const calculateLayout = (nodes, edges) => {
+  if (!nodes || nodes.length === 0) return {};
+
+  const levels = {};
+  const queue = [];
+  const visited = new Set();
+
+  // Find start node
+  const startNode = nodes.find(n => n.type === 'start') || nodes[0];
+  if (startNode) {
+    queue.push({ id: startNode.id, level: 0 });
+    visited.add(startNode.id);
+  }
+
+  // Basic BFS for levels
+  while (queue.length > 0) {
+    const { id, level } = queue.shift();
+    levels[id] = Math.max(levels[id] || 0, level);
+
+    const children = edges
+      .filter(e => e.from === id)
+      .map(e => e.to);
+
+    for (const child of children) {
+      // Check if we've seen this child at a simpler level
+      if (!visited.has(child)) {
+        visited.add(child);
+        queue.push({ id: child, level: level + 1 });
+      } else {
+        // Push it deeper if needed? For simple DAG, usually max level is good
+        // But be careful of cycles.
+        // For now, simple BFS/Level assignment.
+      }
+    }
+  }
+
+  // Fallback for disconnected nodes
+  nodes.forEach(n => {
+    if (levels[n.id] === undefined) levels[n.id] = 0;
+  });
+
+  // Assign positions
+  const positions = {};
+  const nodesByLevel = {};
+
+  Object.entries(levels).forEach(([id, level]) => {
+    if (!nodesByLevel[level]) nodesByLevel[level] = [];
+    nodesByLevel[level].push(id);
+  });
+
+  const LEVEL_HEIGHT = 80;
+  const NODE_WIDTH = 100;
+  const CENTER_X = 150;
+
+  Object.entries(nodesByLevel).forEach(([level, ids]) => {
+    const y = 30 + (parseInt(level) * LEVEL_HEIGHT);
+    const totalW = ids.length * NODE_WIDTH;
+    let startX = CENTER_X - (totalW / 2) + (NODE_WIDTH / 2);
+
+    ids.forEach((id, idx) => {
+      positions[id] = { x: startX + (idx * NODE_WIDTH), y };
+    });
+  });
+
+  return positions;
+};
+
+
 function GraphSidebar({ graphStructure, activeNode }) {
+
+  // Safety checks
+  const { nodes, edges } = graphStructure || { nodes: [], edges: [] };
+
+  const layout = useMemo(() => calculateLayout(nodes, edges), [nodes, edges]);
+
   if (!graphStructure) {
     return (
       <aside className="sidebar graph-sidebar">
@@ -10,142 +85,35 @@ function GraphSidebar({ graphStructure, activeNode }) {
     );
   }
 
-  const { nodes, edges } = graphStructure;
-  const [expandedNodes, setExpandedNodes] = React.useState({});
-
-  const handleNodeClick = async (node) => {
-    if (node.is_subgraph) {
-      try {
-        const res = await fetch(`http://localhost:8000/graph?node_id=${node.id}`);
-        const subgraph = await res.json();
-        setExpandedNodes(prev => ({
-          ...prev,
-          [node.id]: subgraph
-        }));
-        // Ideally, we would merge this into the main graph or show a modal
-        // For now, let's just log it or maybe replace the view?
-        // The user asked to "expand". A simple way is to replace the main view for drill-down
-        // OR simpler: just alert for now as valid proof of concept for "expansion" logic
-        console.log("Subgraph fetched:", subgraph);
-        alert(`Fetched subgraph for ${node.label}: ${JSON.stringify(subgraph, null, 2)}`);
-      } catch (err) {
-        console.error("Failed to fetch subgraph:", err);
-      }
-    }
-  };
-
-  // Simple layout algorithm
-  const layout = useMemo(() => {
-    const nodePositions = {};
-    const levels = {};
-    const queue = [{ id: 'start', level: 0 }];
-    const visited = new Set(['start']);
-
-    // BFS to assign levels
-    while (queue.length > 0) {
-      const { id, level } = queue.shift();
-      levels[id] = Math.max(levels[id] || 0, level); // Keep max level if multiple paths
-
-      // Find neighbors
-      const neighbors = edges
-        .filter(e => e.from === id)
-        .map(e => e.to);
-
-      for (const neighbor of neighbors) {
-        if (!visited.has(neighbor)) {
-          // Allow re-visiting for level calculation? No, simple DAG assumption for now
-          visited.add(neighbor);
-          queue.push({ id: neighbor, level: level + 1 });
-        } else {
-          // If already visited, update level if deeper
-          queue.push({ id: neighbor, level: level + 1 });
-        }
-      }
-    }
-
-    // Group by level
-    const nodesByLevel = {};
-    Object.entries(levels).forEach(([id, level]) => {
-      if (!nodesByLevel[level]) nodesByLevel[level] = [];
-      nodesByLevel[level].push(id);
-    });
-
-    // Determine positions
-    // Canvas size (approx)
-    const centerX = 100;
-    const startY = 30;
-    const levelHeight = 70;
-
-    Object.entries(nodesByLevel).forEach(([level, nodeIds]) => {
-      const y = startY + (parseInt(level) * levelHeight);
-      const count = nodeIds.length;
-      const totalWidth = (count - 1) * 60; // 60px spacing
-      const startX = centerX - (totalWidth / 2);
-
-      nodeIds.forEach((id, idx) => {
-        nodePositions[id] = {
-          x: count === 1 ? centerX : startX + (idx * 60),
-          y: y
-        };
-      });
-    });
-
-    return nodePositions;
-  }, [nodes, edges]);
-
-
-  const getNodeClass = (nodeId) => {
-    const classes = ['graph-node'];
-    if (activeNode === nodeId) classes.push('active');
-    const node = nodes.find(n => n.id === nodeId);
-    if (node) classes.push(node.type);
-    return classes.join(' ');
-  };
-
   return (
     <aside className="sidebar graph-sidebar">
       <h2>Graph Structure</h2>
 
       <div className="graph-visualization">
-        <svg viewBox="0 0 200 400" className="graph-svg">
+        <svg className="graph-svg" viewBox="0 0 300 400">
           <defs>
-            <marker
-              id="arrowhead"
-              markerWidth="10"
-              markerHeight="7"
-              refX="9"
-              refY="3.5"
-              orient="auto"
-            >
-              <polygon points="0 0, 10 3.5, 0 7" fill="#666" />
+            <marker id="arrow" markerWidth="6" markerHeight="6" refX="10" refY="3" orient="auto" markerUnits="strokeWidth">
+              <path d="M0,0 L0,6 L9,3 z" fill="#606078" />
             </marker>
           </defs>
 
           {/* Edges */}
-          {edges.map((edge, idx) => {
-            const from = layout[edge.from];
-            const to = layout[edge.to];
-            if (!from || !to) return null;
+          {edges.map((edge, i) => {
+            const start = layout[edge.from];
+            const end = layout[edge.to];
+            if (!start || !end) return null;
 
-            const isActive = activeNode === edge.from || activeNode === edge.to;
-
+            const isActive = activeNode === edge.from;
+            // Simple lines for now.
             return (
-              <g key={idx}>
+              <g key={i}>
                 <line
-                  x1={from.x}
-                  y1={from.y + 15}
-                  x2={to.x}
-                  y2={to.y - 15}
+                  x1={start.x} y1={start.y} x2={end.x} y2={end.y}
                   className={`graph-edge ${edge.conditional ? 'conditional' : ''} ${isActive ? 'active' : ''}`}
-                  markerEnd="url(#arrowhead)"
+                  markerEnd="url(#arrow)"
                 />
                 {edge.label && (
-                  <text
-                    x={(from.x + to.x) / 2 + 5}
-                    y={(from.y + to.y) / 2}
-                    className="edge-label"
-                    style={{ fontSize: '10px', fill: '#666' }}
-                  >
+                  <text x={(start.x + end.x) / 2} y={(start.y + end.y) / 2} className="edge-label" textAnchor="middle" dy="-5">
                     {edge.label}
                   </text>
                 )}
@@ -157,50 +125,22 @@ function GraphSidebar({ graphStructure, activeNode }) {
           {nodes.map((node) => {
             const pos = layout[node.id];
             if (!pos) return null;
+            const isActive = activeNode === node.id;
 
             return (
-              <g
-                key={node.id}
-                className={getNodeClass(node.id)}
-                onClick={() => handleNodeClick(node)}
-                style={{ cursor: node.is_subgraph ? 'pointer' : 'default' }}
-              >
-                {node.type === 'start' || node.type === 'end' ? (
-                  <circle cx={pos.x} cy={pos.y} r="15" />
+              <g key={node.id} className={`graph-node ${node.type} ${isActive ? 'active' : ''}`}>
+                {(node.type === 'start' || node.type === 'end') ? (
+                  <circle cx={pos.x} cy={pos.y} r="18" />
                 ) : (
-                  <rect
-                    x={pos.x - 40}
-                    y={pos.y - 15}
-                    width="80"
-                    height="30"
-                    rx="5"
-                    strokeDasharray={node.is_subgraph ? "4" : "0"}
-                  />
+                  <rect x={pos.x - 40} y={pos.y - 15} width="80" height="30" rx="4" />
                 )}
-                <text x={pos.x} y={pos.y + 4} textAnchor="middle">
-                  {node.label}
-                </text>
+                <text x={pos.x} y={pos.y} dy="5" textAnchor="middle">{node.label}</text>
               </g>
             );
           })}
         </svg>
       </div>
 
-      <div className="graph-legend">
-        <h3>Legend</h3>
-        <div className="legend-item">
-          <span className="legend-symbol start">●</span>
-          <span>Start/End</span>
-        </div>
-        <div className="legend-item">
-          <span className="legend-symbol node">▢</span>
-          <span>Node</span>
-        </div>
-        <div className="legend-item">
-          <span className="legend-symbol conditional">- -</span>
-          <span>Conditional</span>
-        </div>
-      </div>
     </aside>
   );
 }
