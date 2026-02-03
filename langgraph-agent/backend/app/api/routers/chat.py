@@ -6,6 +6,9 @@ from fastapi.encoders import jsonable_encoder
 from app.models import ChatRequest, ChatResponse, AgentState
 from app.dependencies import get_agent, AgentBase
 from langchain_core.messages import HumanMessage
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -39,6 +42,12 @@ async def chat_endpoint(request: ChatRequest, agent: AgentBase = Depends(get_age
         # Invoke agent
         final_state = await agent.invoke(initial_state, config=config)
         
+        if langfuse_handler:
+            try:
+                langfuse_handler.flush()
+            except Exception as e:
+                logger.warning(f"Langfuse flush failed: {e}")
+        
         # Extract response
         messages = final_state.get("messages", [])
         last_message = messages[-1] if messages else None
@@ -68,9 +77,11 @@ async def websocket_endpoint(websocket: WebSocket):
 
         while True:
             data = await websocket.receive_text()
-            print(data)
             message_data = json.loads(data)
             user_message = message_data.get("message", "")
+            #logger.info(f"User message: {user_message}")
+            #logger.debug(f"[DEBUG] Handler: {langfuse_handler}, Public Key: {langfuse_handler.public_key if langfuse_handler else 'None'}")
+            #print(user_message)
             initial_state = {
                 "messages": [{"role": "user", "content": user_message}],
                 "current_node": "start",
@@ -94,6 +105,12 @@ async def websocket_endpoint(websocket: WebSocket):
                 "callbacks": callbacks
             }
             final_state = await agent.invoke(initial_state, config=config)
+            
+            if langfuse_handler:
+                try:
+                    langfuse_handler.flush()
+                except Exception as e:
+                    logger.warning(f"Langfuse flush failed: {e}")
             
             # Send node transition updates
             await websocket.send_json(jsonable_encoder({

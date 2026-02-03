@@ -11,8 +11,8 @@ services:
       - ./backend:/app
     environment:
       - PYTHONUNBUFFERED=1
-      - LANGFUSE_SECRET_KEY=sk-lf-public
-      - LANGFUSE_PUBLIC_KEY=pk-lf-public
+      - LANGFUSE_SECRET_KEY=sk-lf-67eec192-77e8-4958-99fd-bbc31d00197c
+      - LANGFUSE_PUBLIC_KEY=pk-lf-8fbeeed1-3841-4f42-9379-d109aaf6be17
       - LANGFUSE_HOST=http://langfuse-server:3000
     restart: always
     depends_on:
@@ -30,6 +30,13 @@ services:
       - NEXTAUTH_URL=http://localhost:3333
       - NEXTAUTH_SECRET=mysecret
       - SALT=mysalt
+      - LANGFUSE_INIT_ORG_ID=org-123
+      - LANGFUSE_INIT_PROJECT_ID=project-123
+      - LANGFUSE_INIT_PROJECT_PUBLIC_KEY=pk-lf-dcdaebf9-1716-4574-ad6e-362fd6576259
+      - LANGFUSE_INIT_PROJECT_SECRET_KEY=sk-lf-0a177413-c9e2-4fe0-8e9e-48dee1b550e4
+      - LANGFUSE_INIT_USER_NAME=xinquan
+      - LANGFUSE_INIT_USER_EMAIL=xinquanqu1@gmail.com
+      - LANGFUSE_INIT_USER_PASSWORD=password
     restart: always
 
   langfuse-db:

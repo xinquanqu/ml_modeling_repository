@@ -198,6 +198,35 @@ Outgoing (Server → Client):
 { "type": "response", "content": "agent response", "final_state": {...} }
 ```
 
+## Testing
+
+### Backend Simulation
+
+A simulation script is provided to verify the backend agent logic independently of the frontend.
+
+```bash
+cd backend
+# Make sure your venv is active
+source venv/bin/activate
+python simulate_agent.py
+```
+
+This script:
+1. Connects to the WebSocket endpoint.
+2. Simulates a simple chat ("Hello").
+3. Simulates a tool-use scenario ("Check the weather").
+4. Verifies the state transitions and response.
+
+### Mock LLM Capabilities
+
+The project uses a `MockLLMAdapter` by default. It supports the following specific keywords to trigger tools:
+- **"weather"**: Triggers a simulated weather tool.
+- **"search"**: Triggers a simulated search tool.
+- **"help"**: Returns a standard help message.
+
+Any other input will trigger a generic echo response.
+
+
 ## Extending the Agent
 
 ### Adding New Nodes

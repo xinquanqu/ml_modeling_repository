@@ -14,7 +14,9 @@ class OpenAIAdapter(LLMClient):
             # But maybe we want safe initialization
             pass
             
-        self.client = ChatOpenAI(model=model_name, temperature=0)
+        self.client = ChatOpenAI(model=model_name, 
+                                 api_key=api_key,
+                                 temperature=0)
 
     def generate_response(self, messages: List[Dict[str, str]], tools: List[Dict[str, Any]] = None, callbacks: List[Any] = None) -> Tuple[str, List[Dict[str, Any]]]:
         # Convert dict messages to LangChain messages

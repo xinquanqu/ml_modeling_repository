@@ -10,7 +10,7 @@ from app.infrastructure.llm.factory import get_llm_client
 
 @lru_cache()
 def get_gateway() -> GatewayBase:
-    llm_client = get_llm_client()
+    llm_client = get_llm_client(provider="openai")
     return ChatGateway(llm_client)
 
 @lru_cache()
