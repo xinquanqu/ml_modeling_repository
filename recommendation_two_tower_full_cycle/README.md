@@ -56,17 +56,18 @@ Upload training data to the data warehouse:
 
 ```bash
 # Upload sample CSV data
-curl -X POST "http://localhost:8001/api/v1/ingest/csv" \
+curl -X POST "http://localhost:8001/api/v1/upload/csv" \
   -F "file=@data/sample_data.csv"
 
-# Or ingest from JSON
-curl -X POST "http://localhost:8001/api/v1/ingest/json" \
+# Or ingest batch via API
+curl -X POST "http://localhost:8001/api/v1/ingest/batch" \
   -H "Content-Type: application/json" \
   -d '{
+    "source": "api",
     "records": [
-      {"user_id": "user_001", "item_id": "item_101", "label": 1.0, "timestamp": "2024-01-01T10:00:00Z"},
-      {"user_id": "user_001", "item_id": "item_102", "label": 0.0, "timestamp": "2024-01-01T10:05:00Z"},
-      {"user_id": "user_002", "item_id": "item_101", "label": 1.0, "timestamp": "2024-01-01T11:00:00Z"}
+      {"user_id": "user_001", "item_id": "item_101", "label": 1.0},
+      {"user_id": "user_001", "item_id": "item_102", "label": 0.0},
+      {"user_id": "user_002", "item_id": "item_101", "label": 1.0}
     ]
   }'
 ```
@@ -77,23 +78,16 @@ Generate features for users and items:
 
 ```bash
 # Compute user features
-curl -X POST "http://localhost:8002/api/v1/compute" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "entity_type": "user",
-    "entity_id": "user_001"
-  }'
+curl -X POST "http://localhost:8002/api/v1/compute/user/user_001"
 
 # Compute item features
-curl -X POST "http://localhost:8002/api/v1/compute" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "entity_type": "item",
-    "entity_id": "item_101"
-  }'
+curl -X POST "http://localhost:8002/api/v1/compute/item/item_101"
 
 # Verify features
 curl "http://localhost:8002/api/v1/user/user_001"
+
+# Check feature store stats
+curl "http://localhost:8002/api/v1/stats"
 ```
 
 ### Step 3: Train a Model

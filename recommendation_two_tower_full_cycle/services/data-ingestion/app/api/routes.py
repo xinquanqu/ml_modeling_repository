@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from prometheus_client import Counter
 
-from app.utils.database import get_db_connection
+from app.utils.database import get_db_connection, return_db_connection
 from app.utils.validators import validate_dataframe, DataValidationError
 
 router = APIRouter()
@@ -192,7 +192,7 @@ async def get_batch_info(batch_id: str):
                 (batch_id,)
             )
             result = cur.fetchone()
-        conn.close()
+        return_db_connection(conn)
         
         if not result:
             raise HTTPException(status_code=404, detail="Batch not found")
@@ -230,7 +230,7 @@ async def get_ingestion_stats():
                 """
             )
             results = cur.fetchall()
-        conn.close()
+        return_db_connection(conn)
         
         stats = []
         for row in results:
@@ -285,4 +285,4 @@ async def _insert_records(df: pd.DataFrame, batch_id: str, source: str) -> int:
             return len(records)
             
     finally:
-        conn.close()
+        return_db_connection(conn)
