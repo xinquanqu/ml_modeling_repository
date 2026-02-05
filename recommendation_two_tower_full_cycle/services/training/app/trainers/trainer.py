@@ -1,5 +1,7 @@
 """
-Training loop and MLflow integration.
+Generic Training Engine.
+
+Configuration-driven trainer that works with any registered model.
 """
 
 import os
@@ -13,12 +15,15 @@ from concurrent.futures import ThreadPoolExecutor
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader
 import numpy as np
 import mlflow
 import mlflow.pytorch
 
-from app.models.two_tower import TwoTowerModel
+from app.models.base import BaseRecommendationModel
+from app.registry import ModelRegistry, ModelFactory, initialize_registry
+from app.data import DataPipeline, DataConfig
+from app.evaluation import Evaluator, EvaluationConfig
 from app.utils.database import get_db_connection
 
 
@@ -26,14 +31,16 @@ from app.utils.database import get_db_connection
 _executor = ThreadPoolExecutor(max_workers=2)
 
 
-class Trainer:
+class TrainingEngine:
     """
-    PyTorch model trainer with MLflow integration.
+    Configuration-driven training engine.
+    
+    Works with any model that implements BaseRecommendationModel.
     """
     
     def __init__(
         self,
-        model: TwoTowerModel,
+        model: BaseRecommendationModel,
         config: Dict[str, Any],
         job_id: str
     ):
@@ -41,28 +48,35 @@ class Trainer:
         self.config = config
         self.job_id = job_id
         
+        # Device setup
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model.to(self.device)
         
-        # Optimizer
-        self.optimizer = optim.Adam(
-            self.model.parameters(),
-            lr=config.get("learning_rate", 0.001)
-        )
+        # Get optimizer and loss from model (config-driven)
+        self.optimizer = model.get_optimizer(config.get("learning_rate"))
+        self.criterion = model.get_loss_function()
         
-        # Loss function (BCE for binary classification)
-        self.criterion = nn.BCEWithLogitsLoss()
+        # Evaluator
+        eval_config = EvaluationConfig(
+            metrics=config.get("metrics", ["auc", "precision", "recall"]),
+            top_k=config.get("top_k", 10)
+        )
+        self.evaluator = Evaluator(eval_config)
         
         # Training state
         self.current_epoch = 0
         self.train_losses = []
         self.val_losses = []
         self.best_val_loss = float("inf")
+        self.best_model_state = None
         
-    def train_epoch(
-        self,
-        train_loader: DataLoader
-    ) -> float:
+        # Early stopping
+        self.early_stopping_enabled = config.get("early_stopping", {}).get("enabled", False)
+        self.patience = config.get("early_stopping", {}).get("patience", 5)
+        self.min_delta = config.get("early_stopping", {}).get("min_delta", 0.001)
+        self.patience_counter = 0
+    
+    def train_epoch(self, train_loader: DataLoader) -> float:
         """Train for one epoch."""
         self.model.train()
         total_loss = 0.0
@@ -87,65 +101,17 @@ class Trainer:
         
         return total_loss / max(num_batches, 1)
     
-    def validate(
-        self,
-        val_loader: DataLoader
-    ) -> Tuple[float, Dict[str, float]]:
+    def validate(self, val_loader: DataLoader) -> Tuple[float, Dict[str, float]]:
         """Validate the model."""
-        self.model.eval()
-        total_loss = 0.0
-        num_batches = 0
+        val_loss = self.evaluator.get_loss(
+            self.model, val_loader, self.criterion, self.device
+        )
         
-        all_preds = []
-        all_labels = []
+        metrics = self.evaluator.evaluate(
+            self.model, val_loader, self.device
+        )
         
-        with torch.no_grad():
-            for batch in val_loader:
-                user_ids, item_ids, labels = batch
-                user_ids = user_ids.to(self.device)
-                item_ids = item_ids.to(self.device)
-                labels = labels.float().to(self.device)
-                
-                outputs = self.model(user_ids, item_ids)
-                loss = self.criterion(outputs, labels)
-                
-                total_loss += loss.item()
-                num_batches += 1
-                
-                preds = torch.sigmoid(outputs).cpu().numpy()
-                all_preds.extend(preds)
-                all_labels.extend(labels.cpu().numpy())
-        
-        avg_loss = total_loss / max(num_batches, 1)
-        
-        # Calculate metrics
-        all_preds = np.array(all_preds)
-        all_labels = np.array(all_labels)
-        
-        # AUC
-        from sklearn.metrics import roc_auc_score, precision_score, recall_score
-        
-        try:
-            auc = roc_auc_score(all_labels, all_preds)
-        except:
-            auc = 0.5
-        
-        binary_preds = (all_preds > 0.5).astype(int)
-        
-        try:
-            precision = precision_score(all_labels, binary_preds, zero_division=0)
-            recall = recall_score(all_labels, binary_preds, zero_division=0)
-        except:
-            precision = 0.0
-            recall = 0.0
-        
-        metrics = {
-            "auc": auc,
-            "precision": precision,
-            "recall": recall
-        }
-        
-        return avg_loss, metrics
+        return val_loss, metrics
     
     def train(
         self,
@@ -158,22 +124,22 @@ class Trainer:
         """
         Full training loop with MLflow logging.
         """
-        # Set up MLflow
         mlflow.set_experiment(experiment_name)
         
         run_name = run_name or f"train_{self.job_id[:8]}"
         
         with mlflow.start_run(run_name=run_name) as run:
-            # Log parameters
+            # Log model info
+            model_info = self.model.get_model_info()
             mlflow.log_params({
-                "model_type": "two_tower",
+                "model_type": model_info["model_type"],
+                "model_name": model_info["model_name"],
+                "num_parameters": model_info["num_parameters"],
                 "learning_rate": self.config.get("learning_rate", 0.001),
                 "batch_size": self.config.get("batch_size", 256),
                 "epochs": epochs,
-                "num_users": self.model.config.get("num_users"),
-                "num_items": self.model.config.get("num_items"),
-                "embedding_dim": self.model.config.get("user_embedding_dim"),
-                "hidden_dims": str(self.model.config.get("hidden_dims")),
+                **{f"arch_{k}": str(v) for k, v in self.model.config.items() 
+                   if k not in ["num_users", "num_items"]}
             })
             
             # Update job status
@@ -190,13 +156,11 @@ class Trainer:
                 val_loss, metrics = self.validate(val_loader)
                 self.val_losses.append(val_loss)
                 
-                # Log metrics
+                # Log to MLflow
                 mlflow.log_metrics({
                     "train_loss": train_loss,
                     "val_loss": val_loss,
-                    "auc": metrics["auc"],
-                    "precision": metrics["precision"],
-                    "recall": metrics["recall"]
+                    **metrics
                 }, step=epoch)
                 
                 # Update job progress
@@ -208,14 +172,33 @@ class Trainer:
                 )
                 
                 # Save best model
-                if val_loss < self.best_val_loss:
+                if val_loss < self.best_val_loss - self.min_delta:
                     self.best_val_loss = val_loss
+                    self.best_model_state = self.model.state_dict().copy()
+                    self.patience_counter = 0
+                    
                     model_path = f"/app/models/{self.job_id}_best.pt"
-                    torch.save(self.model.state_dict(), model_path)
+                    torch.save({
+                        "model_state_dict": self.model.state_dict(),
+                        "config": self.model.config,
+                        "epoch": epoch
+                    }, model_path)
+                else:
+                    self.patience_counter += 1
                 
-                print(f"Epoch {epoch+1}/{epochs} - Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, AUC: {metrics['auc']:.4f}")
+                print(f"Epoch {epoch+1}/{epochs} - Train Loss: {train_loss:.4f}, "
+                      f"Val Loss: {val_loss:.4f}, AUC: {metrics.get('auc', 0):.4f}")
+                
+                # Early stopping
+                if self.early_stopping_enabled and self.patience_counter >= self.patience:
+                    print(f"Early stopping triggered at epoch {epoch+1}")
+                    break
             
-            # Save final model to MLflow
+            # Load best model
+            if self.best_model_state:
+                self.model.load_state_dict(self.best_model_state)
+            
+            # Save final model
             model_path = f"/app/models/{self.job_id}_final.pt"
             torch.save({
                 "model_state_dict": self.model.state_dict(),
@@ -224,14 +207,10 @@ class Trainer:
             }, model_path)
             
             mlflow.log_artifact(model_path)
-            
-            # Log model
             mlflow.pytorch.log_model(self.model, "model")
             
-            # Get model URI
             model_uri = f"runs:/{run.info.run_id}/model"
             
-            # Final status update
             self._update_job_status(
                 "completed",
                 mlflow_run_id=run.info.run_id,
@@ -244,7 +223,8 @@ class Trainer:
                 "final_train_loss": self.train_losses[-1],
                 "final_val_loss": self.val_losses[-1],
                 "best_val_loss": self.best_val_loss,
-                "metrics": metrics
+                "metrics": metrics,
+                "epochs_trained": self.current_epoch
             }
     
     def _update_job_status(
@@ -314,9 +294,7 @@ async def run_training_async(
     job_id: str,
     config: Dict[str, Any]
 ) -> Dict[str, Any]:
-    """
-    Run training in a background thread.
-    """
+    """Run training in a background thread."""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(
         _executor,
@@ -328,27 +306,43 @@ async def run_training_async(
 
 def _run_training_sync(job_id: str, config: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Synchronous training function.
+    Synchronous training function with pluggable models.
     """
     try:
+        # Initialize registry
+        initialize_registry(config_dir="model_configs")
+        
         # Load data
-        train_loader, val_loader, num_users, num_items = _load_training_data(config)
+        data_pipeline = DataPipeline()
+        train_loader, val_loader, num_users, num_items = data_pipeline.load_data(config)
         
-        # Create model
-        model = TwoTowerModel(
-            num_users=num_users,
-            num_items=num_items,
-            user_embedding_dim=config.get("user_embedding_dim", 64),
-            item_embedding_dim=config.get("item_embedding_dim", 64),
-            hidden_dims=config.get("hidden_dims", [128, 64]),
-            dropout=config.get("dropout", 0.1)
-        )
+        # Get model name from config
+        model_name = config.get("model_name", "two_tower")
         
-        # Create trainer
-        trainer = Trainer(model, config, job_id)
+        # Try to load from YAML config first
+        config_path = f"model_configs/{model_name}.yaml"
+        
+        if os.path.exists(config_path):
+            model = ModelFactory.create_from_yaml(
+                config_path,
+                num_users=num_users,
+                num_items=num_items,
+                **config
+            )
+        else:
+            # Direct instantiation
+            model = ModelFactory.create_by_name(
+                model_name,
+                num_users=num_users,
+                num_items=num_items,
+                **config
+            )
+        
+        # Create training engine
+        engine = TrainingEngine(model, config, job_id)
         
         # Run training
-        result = trainer.train(
+        result = engine.train(
             train_loader=train_loader,
             val_loader=val_loader,
             epochs=config.get("epochs", 10),
@@ -378,78 +372,7 @@ def _run_training_sync(job_id: str, config: Dict[str, Any]) -> Dict[str, Any]:
         raise
 
 
-def _load_training_data(
-    config: Dict[str, Any]
-) -> Tuple[DataLoader, DataLoader, int, int]:
-    """
-    Load training data from database.
-    """
-    conn = get_db_connection()
-    
-    try:
-        with conn.cursor() as cur:
-            # Get unique users and items
-            cur.execute("SELECT DISTINCT user_id FROM raw_data ORDER BY user_id")
-            user_ids = [row[0] for row in cur.fetchall()]
-            user_to_idx = {uid: idx for idx, uid in enumerate(user_ids)}
-            
-            cur.execute("SELECT DISTINCT item_id FROM raw_data ORDER BY item_id")
-            item_ids = [row[0] for row in cur.fetchall()]
-            item_to_idx = {iid: idx for idx, iid in enumerate(item_ids)}
-            
-            num_users = len(user_ids)
-            num_items = len(item_ids)
-            
-            # Load interactions
-            cur.execute("""
-                SELECT user_id, item_id, COALESCE(label, 1.0) as label
-                FROM raw_data
-            """)
-            
-            users = []
-            items = []
-            labels = []
-            
-            for row in cur.fetchall():
-                if row[0] in user_to_idx and row[1] in item_to_idx:
-                    users.append(user_to_idx[row[0]])
-                    items.append(item_to_idx[row[1]])
-                    labels.append(row[2])
-    
-    finally:
-        conn.close()
-    
-    # Convert to tensors
-    users = torch.tensor(users, dtype=torch.long)
-    items = torch.tensor(items, dtype=torch.long)
-    labels = torch.tensor(labels, dtype=torch.float)
-    
-    # Split into train/val
-    n = len(users)
-    train_split = config.get("train_split", 0.8)
-    
-    indices = torch.randperm(n)
-    train_size = int(n * train_split)
-    
-    train_indices = indices[:train_size]
-    val_indices = indices[train_size:]
-    
-    # Create datasets
-    train_dataset = TensorDataset(
-        users[train_indices],
-        items[train_indices],
-        labels[train_indices]
-    )
-    
-    val_dataset = TensorDataset(
-        users[val_indices],
-        items[val_indices],
-        labels[val_indices]
-    )
-    
-    batch_size = config.get("batch_size", 256)
-    
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-    
-    return train_loader, val_loader, num_users, num_items
+# Keep backward compatibility
+class Trainer(TrainingEngine):
+    """Alias for backward compatibility."""
+    pass

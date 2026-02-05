@@ -1,5 +1,13 @@
-"""Models package."""
+"""Models package with registry integration."""
 
-from .two_tower import TwoTowerModel, UserTower, ItemTower
+from app.models.base import BaseRecommendationModel
+from app.models.two_tower import TwoTowerModel
+from app.models.mf import MatrixFactorizationModel
+from app.models.ncf import NeuralCollaborativeFiltering
 
-__all__ = ["TwoTowerModel", "UserTower", "ItemTower"]
+__all__ = [
+    "BaseRecommendationModel",
+    "TwoTowerModel",
+    "MatrixFactorizationModel",
+    "NeuralCollaborativeFiltering"
+]

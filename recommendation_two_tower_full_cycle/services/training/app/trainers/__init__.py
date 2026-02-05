@@ -1,5 +1,4 @@
 """Trainers package."""
+from app.trainers.trainer import TrainingEngine, Trainer, run_training_async
 
-from .trainer import Trainer, run_training_async
-
-__all__ = ["Trainer", "run_training_async"]
+__all__ = ["TrainingEngine", "Trainer", "run_training_async"]

@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from prometheus_client import Counter
 
 from app.trainers.trainer import run_training_async
+from app.registry import ModelRegistry, initialize_registry
 from app.utils.database import get_db_connection
 
 router = APIRouter()
@@ -26,19 +27,28 @@ TRAINING_JOBS_COUNTER = Counter(
 
 class TrainingConfig(BaseModel):
     """Configuration for a training job."""
-    model_type: str = "two_tower"
+    # Model selection (key change: model is now configurable)
+    model_name: str = "two_tower"  # two_tower, matrix_factorization, ncf
     
-    # Model architecture
-    user_embedding_dim: int = 64
-    item_embedding_dim: int = 64
-    hidden_dims: List[int] = Field(default_factory=lambda: [128, 64])
-    dropout: float = 0.1
+    # Model architecture (overrides YAML config)
+    user_embedding_dim: Optional[int] = None
+    item_embedding_dim: Optional[int] = None
+    hidden_dims: Optional[List[int]] = None
+    dropout: Optional[float] = None
     
     # Training parameters
     learning_rate: float = 0.001
     batch_size: int = 256
     epochs: int = 10
     train_split: float = 0.8
+    
+    # Early stopping
+    early_stopping_enabled: bool = True
+    early_stopping_patience: int = 5
+    early_stopping_min_delta: float = 0.001
+    
+    # Evaluation
+    metrics: List[str] = Field(default_factory=lambda: ["auc", "precision", "recall"])
     
     # MLflow
     experiment_name: str = "recommendation_model"
@@ -55,6 +65,7 @@ class TrainingJobResponse(BaseModel):
     job_id: str
     status: str
     message: str
+    model_name: str
 
 
 class TrainingJobStatus(BaseModel):
@@ -73,6 +84,50 @@ class TrainingJobStatus(BaseModel):
     error_message: Optional[str]
 
 
+@router.get("/models")
+async def list_available_models():
+    """
+    List all available models in the registry.
+    """
+    try:
+        initialize_registry(config_dir="model_configs")
+        models = ModelRegistry.list_models()
+        configs = ModelRegistry.list_configs()
+        
+        return {
+            "models": models,
+            "configs": configs,
+            "available_models": [
+                {
+                    "name": name,
+                    "has_config": name in configs
+                }
+                for name in models
+            ]
+        }
+    except Exception as e:
+        raise HTTPException(500, f"Failed to list models: {str(e)}")
+
+
+@router.get("/models/{model_name}/config")
+async def get_model_config(model_name: str):
+    """
+    Get the configuration for a model.
+    """
+    try:
+        initialize_registry(config_dir="model_configs")
+        config = ModelRegistry.get_config(model_name)
+        
+        if not config:
+            raise HTTPException(404, f"Config for model '{model_name}' not found")
+        
+        return config
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Failed to get config: {str(e)}")
+
+
 @router.post("/jobs", response_model=TrainingJobResponse)
 async def create_training_job(
     request: TrainingJobRequest,
@@ -82,7 +137,14 @@ async def create_training_job(
     Create and start a new training job.
     """
     job_id = str(uuid.uuid4())
-    config = request.config.model_dump()
+    config = request.config.model_dump(exclude_none=True)
+    
+    # Build early stopping config
+    config["early_stopping"] = {
+        "enabled": config.pop("early_stopping_enabled", True),
+        "patience": config.pop("early_stopping_patience", 5),
+        "min_delta": config.pop("early_stopping_min_delta", 0.001)
+    }
     
     # Insert job into database
     conn = get_db_connection()
@@ -107,7 +169,8 @@ async def create_training_job(
     return TrainingJobResponse(
         job_id=job_id,
         status="pending",
-        message="Training job submitted successfully"
+        message="Training job submitted successfully",
+        model_name=config.get("model_name", "two_tower")
     )
 
 

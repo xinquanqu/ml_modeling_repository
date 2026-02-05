@@ -1,0 +1,33 @@
+# Matrix Factorization Model Configuration
+#
+# Classic recommendation model using factorized user-item matrices.
+# Simple and effective baseline.
+
+model:
+  name: matrix_factorization
+  class: MatrixFactorizationModel
+  module: app.models.mf
+  description: "Basic matrix factorization with user/item biases"
+
+architecture:
+  embedding_dim: 64
+
+training:
+  optimizer: adam
+  learning_rate: 0.01
+  weight_decay: 0.001
+  batch_size: 512
+  epochs: 20
+  loss: mse
+  train_split: 0.8
+
+evaluation:
+  metrics:
+    - auc
+    - rmse
+    - precision
+    - recall
+
+features:
+  user_features: []
+  item_features: []

@@ -13,10 +13,13 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy model configurations
+COPY model_configs/ ./model_configs/
+
 # Copy application code
 COPY app/ ./app/
 
-# Create models directory
+# Create models directory for checkpoints
 RUN mkdir -p /app/models
 
 # Expose port

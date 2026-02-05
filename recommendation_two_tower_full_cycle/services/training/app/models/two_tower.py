@@ -10,13 +10,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import List, Optional, Dict, Any
 
+from app.models.base import BaseRecommendationModel
+from app.registry.model_registry import ModelRegistry
+
 
 class UserTower(nn.Module):
-    """
-    User tower of the two-tower model.
-    
-    Processes user features and produces user embeddings.
-    """
+    """User tower of the two-tower model."""
     
     def __init__(
         self,
@@ -30,7 +29,6 @@ class UserTower(nn.Module):
         
         self.user_embedding = nn.Embedding(num_users, embedding_dim)
         
-        # User feature processing layers
         input_dim = embedding_dim + num_user_features
         layers = []
         
@@ -51,35 +49,19 @@ class UserTower(nn.Module):
         user_ids: torch.Tensor,
         user_features: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        """
-        Forward pass for user tower.
-        
-        Args:
-            user_ids: Tensor of user IDs [batch_size]
-            user_features: Optional tensor of user features [batch_size, num_features]
-            
-        Returns:
-            User embeddings [batch_size, output_dim]
-        """
         x = self.user_embedding(user_ids)
         
         if user_features is not None:
             x = torch.cat([x, user_features], dim=1)
         
         x = self.feature_layers(x)
-        
-        # L2 normalize for cosine similarity
         x = F.normalize(x, p=2, dim=1)
         
         return x
 
 
 class ItemTower(nn.Module):
-    """
-    Item tower of the two-tower model.
-    
-    Processes item features and produces item embeddings.
-    """
+    """Item tower of the two-tower model."""
     
     def __init__(
         self,
@@ -93,7 +75,6 @@ class ItemTower(nn.Module):
         
         self.item_embedding = nn.Embedding(num_items, embedding_dim)
         
-        # Item feature processing layers
         input_dim = embedding_dim + num_item_features
         layers = []
         
@@ -114,79 +95,55 @@ class ItemTower(nn.Module):
         item_ids: torch.Tensor,
         item_features: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        """
-        Forward pass for item tower.
-        
-        Args:
-            item_ids: Tensor of item IDs [batch_size]
-            item_features: Optional tensor of item features [batch_size, num_features]
-            
-        Returns:
-            Item embeddings [batch_size, output_dim]
-        """
         x = self.item_embedding(item_ids)
         
         if item_features is not None:
             x = torch.cat([x, item_features], dim=1)
         
         x = self.feature_layers(x)
-        
-        # L2 normalize for cosine similarity
         x = F.normalize(x, p=2, dim=1)
         
         return x
 
 
-class TwoTowerModel(nn.Module):
+@ModelRegistry.register("two_tower")
+class TwoTowerModel(BaseRecommendationModel):
     """
     Two-Tower Recommendation Model.
     
     Combines user and item towers to predict user-item affinity.
     """
     
-    def __init__(
-        self,
-        num_users: int,
-        num_items: int,
-        user_embedding_dim: int = 64,
-        item_embedding_dim: int = 64,
-        hidden_dims: List[int] = [128, 64],
-        num_user_features: int = 0,
-        num_item_features: int = 0,
-        dropout: float = 0.1,
-        temperature: float = 0.1
-    ):
-        super().__init__()
+    model_type = "embedding"
+    model_name = "TwoTower"
+    
+    def __init__(self, config: Dict[str, Any]):
+        super().__init__(config)
         
         self.user_tower = UserTower(
-            num_users=num_users,
-            embedding_dim=user_embedding_dim,
-            hidden_dims=hidden_dims,
-            num_user_features=num_user_features,
-            dropout=dropout
+            num_users=config["num_users"],
+            embedding_dim=config.get("user_embedding_dim", 64),
+            hidden_dims=config.get("hidden_dims", [128, 64]),
+            num_user_features=config.get("num_user_features", 0),
+            dropout=config.get("dropout", 0.1)
         )
         
         self.item_tower = ItemTower(
-            num_items=num_items,
-            embedding_dim=item_embedding_dim,
-            hidden_dims=hidden_dims,
-            num_item_features=num_item_features,
-            dropout=dropout
+            num_items=config["num_items"],
+            embedding_dim=config.get("item_embedding_dim", 64),
+            hidden_dims=config.get("hidden_dims", [128, 64]),
+            num_item_features=config.get("num_item_features", 0),
+            dropout=config.get("dropout", 0.1)
         )
         
-        self.temperature = temperature
-        
-        # Model metadata
-        self.config = {
-            "num_users": num_users,
-            "num_items": num_items,
-            "user_embedding_dim": user_embedding_dim,
-            "item_embedding_dim": item_embedding_dim,
-            "hidden_dims": hidden_dims,
-            "dropout": dropout,
-            "temperature": temperature
-        }
-        
+        self.temperature = config.get("temperature", 0.1)
+    
+    def _validate_config(self) -> None:
+        required = ["num_users", "num_items"]
+        for key in required:
+            if key not in self.config:
+                raise ValueError(f"Missing required config key: {key}")
+    
     def forward(
         self,
         user_ids: torch.Tensor,
@@ -194,22 +151,9 @@ class TwoTowerModel(nn.Module):
         user_features: Optional[torch.Tensor] = None,
         item_features: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        """
-        Forward pass computing similarity scores.
-        
-        Args:
-            user_ids: User ID tensor [batch_size]
-            item_ids: Item ID tensor [batch_size]
-            user_features: Optional user features [batch_size, num_user_features]
-            item_features: Optional item features [batch_size, num_item_features]
-            
-        Returns:
-            Similarity scores [batch_size]
-        """
         user_emb = self.user_tower(user_ids, user_features)
         item_emb = self.item_tower(item_ids, item_features)
         
-        # Cosine similarity (embeddings are already normalized)
         similarity = torch.sum(user_emb * item_emb, dim=1) / self.temperature
         
         return similarity
@@ -219,7 +163,6 @@ class TwoTowerModel(nn.Module):
         user_ids: torch.Tensor,
         user_features: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        """Get user embeddings for inference."""
         return self.user_tower(user_ids, user_features)
     
     def get_item_embeddings(
@@ -227,28 +170,4 @@ class TwoTowerModel(nn.Module):
         item_ids: torch.Tensor,
         item_features: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        """Get item embeddings for inference."""
         return self.item_tower(item_ids, item_features)
-    
-    def compute_scores(
-        self,
-        user_embedding: torch.Tensor,
-        item_embeddings: torch.Tensor
-    ) -> torch.Tensor:
-        """
-        Compute scores between a user and multiple items.
-        
-        Args:
-            user_embedding: Single user embedding [1, dim] or [dim]
-            item_embeddings: Item embeddings [num_items, dim]
-            
-        Returns:
-            Scores [num_items]
-        """
-        if user_embedding.dim() == 1:
-            user_embedding = user_embedding.unsqueeze(0)
-        
-        # Cosine similarity
-        scores = torch.mm(user_embedding, item_embeddings.t()) / self.temperature
-        
-        return scores.squeeze(0)

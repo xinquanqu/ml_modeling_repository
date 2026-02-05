@@ -4,7 +4,7 @@ services:
   # =============================================================================
   # Infrastructure Services
   # =============================================================================
-  
+
   postgres:
     image: postgres:15-alpine
     container_name: ml-postgres
@@ -16,9 +16,9 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./services/data-warehouse/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "5432:5432"
+      - "5433:5432" # Use 5433 on host to avoid conflict with local PostgreSQL
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mlplatform}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mlplatform}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -33,7 +33,7 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -53,7 +53,7 @@ services:
       - "9000:9000"
       - "9001:9001"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
       interval: 30s
       timeout: 20s
       retries: 3
@@ -126,7 +126,7 @@ services:
       - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD:-minioadmin123}
       - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
     ports:
-      - "5000:5000"
+      - "5001:5000" # Use 5001 on host to avoid conflict (macOS AirPlay uses 5000)
     depends_on:
       postgres:
         condition: service_healthy

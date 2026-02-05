@@ -1,0 +1,49 @@
+# Two-Tower Model Configuration
+# 
+# A neural network architecture for recommendation systems that learns
+# separate embeddings for users and items.
+
+model:
+  name: two_tower
+  class: TwoTowerModel
+  module: app.models.two_tower
+  description: "Two-tower model with separate user and item towers"
+
+architecture:
+  user_embedding_dim: 64
+  item_embedding_dim: 64
+  hidden_dims: [128, 64]
+  num_user_features: 0
+  num_item_features: 0
+  dropout: 0.1
+  temperature: 0.1
+
+training:
+  optimizer: adam
+  learning_rate: 0.001
+  weight_decay: 0.0
+  batch_size: 256
+  epochs: 10
+  loss: bce_with_logits
+  train_split: 0.8
+  early_stopping:
+    enabled: true
+    patience: 3
+    min_delta: 0.001
+
+evaluation:
+  metrics:
+    - auc
+    - precision
+    - recall
+    - ndcg@10
+  validation_split: 0.2
+
+features:
+  user_features:
+    - interaction_count
+    - avg_label
+    - recency
+  item_features:
+    - popularity_score
+    - interaction_count
