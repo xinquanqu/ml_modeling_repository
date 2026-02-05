@@ -1,0 +1,246 @@
+version: '3.8'
+
+services:
+  # =============================================================================
+  # Infrastructure Services
+  # =============================================================================
+  
+  postgres:
+    image: postgres:15-alpine
+    container_name: ml-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-mlplatform}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mlplatform_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-mlplatform}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./services/data-warehouse/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mlplatform}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ml-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: ml-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ml-network
+
+  minio:
+    image: minio/minio:latest
+    container_name: ml-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - ml-network
+
+  # =============================================================================
+  # Data Layer Services
+  # =============================================================================
+
+  data-ingestion:
+    build:
+      context: ./services/data-ingestion
+      dockerfile: Dockerfile
+    container_name: ml-data-ingestion
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_USER=${POSTGRES_USER:-mlplatform}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-mlplatform_secret}
+      - POSTGRES_DB=${POSTGRES_DB:-mlplatform}
+      - REDIS_HOST=redis
+    ports:
+      - "8001:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./shared:/app/shared:ro
+    networks:
+      - ml-network
+
+  feature-store:
+    build:
+      context: ./services/feature-store
+      dockerfile: Dockerfile
+    container_name: ml-feature-store
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_USER=${POSTGRES_USER:-mlplatform}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-mlplatform_secret}
+      - POSTGRES_DB=${POSTGRES_DB:-mlplatform}
+      - REDIS_HOST=redis
+    ports:
+      - "8002:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./shared:/app/shared:ro
+    networks:
+      - ml-network
+
+  # =============================================================================
+  # ML Training & Experimentation
+  # =============================================================================
+
+  mlflow:
+    build:
+      context: ./services/experimentation
+      dockerfile: Dockerfile
+    container_name: ml-mlflow
+    environment:
+      - MLFLOW_BACKEND_STORE_URI=postgresql://${POSTGRES_USER:-mlplatform}:${POSTGRES_PASSWORD:-mlplatform_secret}@postgres:5432/mlflow
+      - MLFLOW_ARTIFACT_ROOT=s3://mlflow-artifacts
+      - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER:-minioadmin}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD:-minioadmin123}
+      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - ml-network
+
+  training:
+    build:
+      context: ./services/training
+      dockerfile: Dockerfile
+    container_name: ml-training
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_USER=${POSTGRES_USER:-mlplatform}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-mlplatform_secret}
+      - POSTGRES_DB=${POSTGRES_DB:-mlplatform}
+      - REDIS_HOST=redis
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER:-minioadmin}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD:-minioadmin123}
+      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
+    ports:
+      - "8003:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mlflow:
+        condition: service_started
+    volumes:
+      - ./shared:/app/shared:ro
+      - model_artifacts:/app/models
+    networks:
+      - ml-network
+
+  # =============================================================================
+  # Model Serving
+  # =============================================================================
+
+  serving:
+    build:
+      context: ./services/serving
+      dockerfile: Dockerfile
+    container_name: ml-serving
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_USER=${POSTGRES_USER:-mlplatform}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-mlplatform_secret}
+      - REDIS_HOST=redis
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - AWS_ACCESS_KEY_ID=${MINIO_ROOT_USER:-minioadmin}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD:-minioadmin123}
+      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
+    ports:
+      - "8004:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      mlflow:
+        condition: service_started
+    volumes:
+      - ./shared:/app/shared:ro
+      - model_artifacts:/app/models:ro
+    networks:
+      - ml-network
+
+  # =============================================================================
+  # Observability Stack
+  # =============================================================================
+
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: ml-prometheus
+    volumes:
+      - ./services/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    networks:
+      - ml-network
+
+  grafana:
+    image: grafana/grafana:10.1.0
+    container_name: ml-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./services/observability/grafana/provisioning:/etc/grafana/provisioning
+      - ./services/observability/grafana/dashboards:/var/lib/grafana/dashboards
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - ml-network
+
+networks:
+  ml-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  prometheus_data:
+  grafana_data:
+  model_artifacts:

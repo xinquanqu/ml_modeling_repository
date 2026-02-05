@@ -1,0 +1,58 @@
+"""
+Database utilities for training service.
+"""
+
+import os
+from typing import Optional
+
+import psycopg2
+from psycopg2 import pool
+
+_connection_pool: Optional[pool.ThreadedConnectionPool] = None
+
+
+def get_db_config() -> dict:
+    return {
+        "host": os.getenv("POSTGRES_HOST", "postgres"),
+        "port": int(os.getenv("POSTGRES_PORT", "5432")),
+        "user": os.getenv("POSTGRES_USER", "mlplatform"),
+        "password": os.getenv("POSTGRES_PASSWORD", "mlplatform_secret"),
+        "database": os.getenv("POSTGRES_DB", "mlplatform"),
+    }
+
+
+def init_db_pool(min_conn: int = 2, max_conn: int = 10):
+    global _connection_pool
+    
+    config = get_db_config()
+    
+    try:
+        _connection_pool = pool.ThreadedConnectionPool(
+            min_conn,
+            max_conn,
+            host=config["host"],
+            port=config["port"],
+            user=config["user"],
+            password=config["password"],
+            database=config["database"]
+        )
+        print(f"Database connection pool initialized: {config['host']}:{config['port']}")
+    except Exception as e:
+        print(f"Failed to initialize database pool: {e}")
+        raise
+
+
+def get_db_connection():
+    global _connection_pool
+    
+    if _connection_pool is None:
+        config = get_db_config()
+        return psycopg2.connect(
+            host=config["host"],
+            port=config["port"],
+            user=config["user"],
+            password=config["password"],
+            database=config["database"]
+        )
+    
+    return _connection_pool.getconn()

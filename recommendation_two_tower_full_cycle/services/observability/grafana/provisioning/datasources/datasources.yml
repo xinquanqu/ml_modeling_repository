@@ -1,0 +1,24 @@
+# Grafana Datasources Provisioning
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    
+  - name: PostgreSQL
+    type: postgres
+    url: postgres:5432
+    database: mlplatform
+    user: mlplatform
+    secureJsonData:
+      password: mlplatform_secret
+    jsonData:
+      sslmode: disable
+      maxOpenConns: 5
+      maxIdleConns: 2
+      connMaxLifetime: 14400
