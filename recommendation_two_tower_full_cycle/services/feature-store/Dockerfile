@@ -20,6 +20,10 @@ COPY feature_repo/ ./feature_repo/
 # Copy application code
 COPY app/ ./app/
 
+# Copy startup script
+COPY start.sh .
+RUN chmod +x start.sh
+
 # Create data directory for Feast registry
 RUN mkdir -p /app/feature_repo/data
 
@@ -33,5 +37,5 @@ EXPOSE 8002
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:8002/health || exit 1
 
-# Run the FastAPI application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002"]
+# Run the startup script
+CMD ["./start.sh"]

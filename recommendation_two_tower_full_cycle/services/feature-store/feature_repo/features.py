@@ -1,14 +1,12 @@
 """
 Feast Entity and Feature View definitions for the ML Platform.
-
-This module defines the feature schema for users and items
-in the recommendation system.
+Compatible with Feast 0.47+
 """
 
 from datetime import timedelta
 
-from feast import Entity, FeatureView, Field, PushSource
-from feast.types import Float32, Int64, String
+from feast import Entity, FeatureView, Field
+from feast.types import Float32, Int64
 from feast.infra.offline_stores.contrib.postgres_offline_store.postgres_source import (
     PostgreSQLSource,
 )
@@ -35,16 +33,15 @@ item = Entity(
 # Data Sources
 # =============================================================================
 
-# User features computed from raw interactions
 user_source = PostgreSQLSource(
     name="user_features_source",
     query="""
         SELECT 
             user_id,
-            COUNT(*) as interaction_count,
-            COALESCE(AVG(label), 0) as avg_rating,
-            COUNT(DISTINCT item_id) as unique_items,
-            EXTRACT(EPOCH FROM (NOW() - MAX(created_at))) / 86400 as last_active_days,
+            CAST(COUNT(*) AS BIGINT) as interaction_count,
+            CAST(COALESCE(AVG(label), 0) AS REAL) as avg_rating,
+            CAST(COUNT(DISTINCT item_id) AS BIGINT) as unique_items,
+            CAST(EXTRACT(EPOCH FROM (NOW() - MAX(created_at))) / 86400 AS REAL) as last_active_days,
             NOW() as event_timestamp
         FROM raw_data
         GROUP BY user_id
@@ -52,16 +49,15 @@ user_source = PostgreSQLSource(
     timestamp_field="event_timestamp",
 )
 
-# Item features computed from raw interactions
 item_source = PostgreSQLSource(
     name="item_features_source",
     query="""
         SELECT 
             item_id,
-            COUNT(*) as interaction_count,
-            COALESCE(AVG(label), 0) as avg_rating,
-            COUNT(DISTINCT user_id) as unique_users,
-            EXTRACT(EPOCH FROM (NOW() - MAX(created_at))) / 86400 as last_active_days,
+            CAST(COUNT(*) AS BIGINT) as interaction_count,
+            CAST(COALESCE(AVG(label), 0) AS REAL) as avg_rating,
+            CAST(COUNT(DISTINCT user_id) AS BIGINT) as unique_users,
+            CAST(EXTRACT(EPOCH FROM (NOW() - MAX(created_at))) / 86400 AS REAL) as last_active_days,
             NOW() as event_timestamp
         FROM raw_data
         GROUP BY item_id
@@ -86,7 +82,7 @@ user_features = FeatureView(
     ],
     source=user_source,
     online=True,
-    description="User behavioral features computed from interactions",
+    description="User behavioral features",
 )
 
 item_features = FeatureView(
@@ -101,20 +97,5 @@ item_features = FeatureView(
     ],
     source=item_source,
     online=True,
-    description="Item popularity and engagement features",
-)
-
-
-# =============================================================================
-# Push Sources for Real-time Updates
-# =============================================================================
-
-user_push_source = PushSource(
-    name="user_push_source",
-    batch_source=user_source,
-)
-
-item_push_source = PushSource(
-    name="item_push_source",
-    batch_source=item_source,
+    description="Item popularity features",
 )

@@ -1,3 +1,4 @@
+# Template - actual config is generated at runtime from environment variables
 project: ml_platform_features
 provider: local
 registry: /app/feature_repo/data/registry.db
@@ -10,6 +11,6 @@ offline_store:
   port: 5432
   database: mlplatform
   db_schema: public
-  user: ${POSTGRES_USER:-mlplatform}
-  password: ${POSTGRES_PASSWORD:-mlplatform_secret}
+  user: mlplatform
+  password: mlplatform_secret
 entity_key_serialization_version: 2
