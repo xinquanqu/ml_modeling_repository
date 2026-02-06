@@ -12,7 +12,8 @@ A comprehensive machine learning platform with microservices architecture for th
 │  ─────────────────   │  ──────────────     │  ────────────────  │
 │  • Data Ingestion    │  • Training         │  • Model Serving   │
 │  • Data Warehouse    │  • Experimentation  │    (FastAPI+KServe)│
-│  • Feature Store     │    (MLflow)         │                    │
+│  • Feast (Feature    │    (MLflow)         │                    │
+│    Store + Redis)    │                     │                    │
 ├─────────────────────────────────────────────────────────────────┤
 │                    Observability (Grafana + Prometheus)          │
 └─────────────────────────────────────────────────────────────────┘
@@ -218,6 +219,47 @@ class MyModel(BaseRecommendationModel):
 
 ---
 
+## Feature Store (Feast)
+
+The platform uses [Feast](https://feast.dev/) for feature management with:
+- **Online Store**: Redis for low-latency serving
+- **Offline Store**: PostgreSQL for training data
+
+### Feature Views
+
+| View | Entity | Features |
+|------|--------|----------|
+| `user_features` | `user_id` | `interaction_count`, `avg_rating`, `unique_items`, `last_active_days` |
+| `item_features` | `item_id` | `interaction_count`, `avg_rating`, `unique_users`, `last_active_days` |
+
+### API Endpoints
+
+```bash
+# Materialize features to Redis
+curl -X POST "http://localhost:8002/api/v1/materialize" \
+  -H "Content-Type: application/json" -d '{}'
+
+# Get user features
+curl "http://localhost:8002/api/v1/user/user_001"
+
+# Get item features  
+curl "http://localhost:8002/api/v1/item/item_101"
+
+# List registered feature views
+curl "http://localhost:8002/api/v1/registry"
+
+# Feature store stats
+curl "http://localhost:8002/api/v1/stats"
+```
+
+### Configuration
+
+Feature store uses environment variables from `.env`:
+- `POSTGRES_HOST`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`
+- `REDIS_HOST`
+
+---
+
 ## Directory Structure
 
 ```
@@ -225,7 +267,9 @@ class MyModel(BaseRecommendationModel):
 ├── services/
 │   ├── data-ingestion/     # FastAPI data service
 │   ├── data-warehouse/     # PostgreSQL + migrations
-│   ├── feature-store/      # Feature engineering
+│   ├── feature-store/      # Feast feature store
+│   │   ├── feature_repo/   # Feast definitions
+│   │   └── app/            # FastAPI wrapper
 │   ├── training/           # PyTorch training + model configs
 │   │   ├── app/
 │   │   │   ├── models/     # Model implementations

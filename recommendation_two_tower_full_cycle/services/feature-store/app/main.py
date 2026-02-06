@@ -207,7 +207,7 @@ async def get_item_features(item_id: str):
 # =============================================================================
 
 @app.post("/api/v1/materialize")
-async def materialize_features(request: MaterializeRequest):
+async def materialize_features(request: Optional[MaterializeRequest] = None):
     """
     Materialize features to the online store.
     
@@ -216,14 +216,20 @@ async def materialize_features(request: MaterializeRequest):
     try:
         store = get_store()
         
-        end_date = request.end_date or datetime.utcnow()
-        start_date = request.start_date or datetime(2020, 1, 1)
+        end_date = datetime.utcnow()
+        start_date = datetime(2020, 1, 1)
+        feature_views = None
         
-        if request.feature_views:
+        if request:
+            end_date = request.end_date or end_date
+            start_date = request.start_date or start_date
+            feature_views = request.feature_views
+        
+        if feature_views:
             store.materialize(
                 start_date=start_date,
                 end_date=end_date,
-                feature_views=request.feature_views,
+                feature_views=feature_views,
             )
         else:
             store.materialize(
