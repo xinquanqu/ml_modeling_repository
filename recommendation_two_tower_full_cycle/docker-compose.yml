@@ -98,15 +98,14 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-mlplatform_secret}
       - POSTGRES_DB=${POSTGRES_DB:-mlplatform}
       - REDIS_HOST=redis
+      - FEAST_REPO_PATH=/app/feature_repo
     ports:
-      - "8002:8000"
+      - "8002:8002"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./shared:/app/shared:ro
     networks:
       - ml-network
 

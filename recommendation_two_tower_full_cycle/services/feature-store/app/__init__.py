@@ -1,1 +1,1 @@
-"""App package."""
+"""Feature Store app package - Feast powered."""

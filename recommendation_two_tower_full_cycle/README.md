@@ -37,7 +37,7 @@ docker-compose ps
 |---------|------|-------------|
 | Data Ingestion | 8001 | File upload & streaming |
 | Data Warehouse | 5433 | PostgreSQL database |
-| Feature Store | 8002 | Feature computation & storage |
+| Feature Store | 8002 | Feast-powered feature serving |
 | Training | 8003 | PyTorch training jobs |
 | MLflow | 5001 | Experiment tracking UI |
 | Model Serving | 8004 | Inference API |
@@ -72,22 +72,24 @@ curl -X POST "http://localhost:8001/api/v1/ingest/batch" \
   }'
 ```
 
-### Step 2: Compute Features
+### Step 2: Materialize Features (Feast)
 
-Generate features for users and items:
+Push features to the online store (Redis):
 
 ```bash
-# Compute user features
-curl -X POST "http://localhost:8002/api/v1/compute/user/user_001"
+# Materialize all features to online store
+curl -X POST "http://localhost:8002/api/v1/materialize" \
+  -H "Content-Type: application/json" \
+  -d '{}'
 
-# Compute item features
-curl -X POST "http://localhost:8002/api/v1/compute/item/item_101"
-
-# Verify features
+# Get user features
 curl "http://localhost:8002/api/v1/user/user_001"
 
-# Check feature store stats
-curl "http://localhost:8002/api/v1/stats"
+# Get item features
+curl "http://localhost:8002/api/v1/item/item_101"
+
+# Check feature store registry
+curl "http://localhost:8002/api/v1/registry"
 ```
 
 ### Step 3: Train a Model
