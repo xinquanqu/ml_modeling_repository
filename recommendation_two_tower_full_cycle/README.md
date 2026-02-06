@@ -143,19 +143,16 @@ open http://localhost:5001
 
 ### Step 5: Load Model for Serving
 
-Deploy the trained model:
+Deploy the trained model (replace `{run_id}` with actual MLflow run ID):
 
 ```bash
-# Load model from MLflow
-curl -X POST "http://localhost:8004/api/v1/models/load" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model_uri": "runs:/{run_id}/model",
-    "model_name": "recommendation_v1"
-  }'
+# Get the run ID from MLflow UI at http://localhost:5001
+
+# Load model using query parameters
+curl -X POST "http://localhost:8004/api/v1/models/load?model_uri=runs:/{run_id}/model&version=v1"
 
 # Set as active model
-curl -X POST "http://localhost:8004/api/v1/models/recommendation_v1/activate"
+curl -X POST "http://localhost:8004/api/v1/models/v1/activate"
 ```
 
 ### Step 6: Get Predictions

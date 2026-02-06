@@ -74,7 +74,8 @@ async def health_check():
         conn = get_db_connection()
         with conn.cursor() as cur:
             cur.execute("SELECT 1")
-        conn.close()
+        from app.utils.database import return_db_connection
+        return_db_connection(conn)
         status["postgres"] = "connected"
     except Exception as e:
         status["postgres"] = f"error: {str(e)}"

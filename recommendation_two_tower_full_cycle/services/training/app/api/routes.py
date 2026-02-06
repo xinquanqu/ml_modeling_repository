@@ -13,7 +13,7 @@ from prometheus_client import Counter
 
 from app.trainers.trainer import run_training_async
 from app.registry import ModelRegistry, initialize_registry
-from app.utils.database import get_db_connection
+from app.utils.database import get_db_connection, return_db_connection
 
 router = APIRouter()
 
@@ -159,7 +159,7 @@ async def create_training_job(
             )
             conn.commit()
     finally:
-        conn.close()
+        return_db_connection(conn)
     
     # Start training in background
     background_tasks.add_task(run_training_async, job_id, config)
@@ -212,7 +212,7 @@ async def get_training_job(job_id: str):
                 error_message=row[11]
             )
     finally:
-        conn.close()
+        return_db_connection(conn)
 
 
 @router.get("/jobs", response_model=List[TrainingJobStatus])
@@ -271,7 +271,7 @@ async def list_training_jobs(
             
             return jobs
     finally:
-        conn.close()
+        return_db_connection(conn)
 
 
 @router.delete("/jobs/{job_id}")
@@ -299,7 +299,7 @@ async def cancel_training_job(job_id: str):
             
         return {"success": True, "job_id": job_id, "status": "cancelled"}
     finally:
-        conn.close()
+        return_db_connection(conn)
 
 
 @router.get("/experiments")

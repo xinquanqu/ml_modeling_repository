@@ -25,9 +25,10 @@ EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:5000/health || exit 1
 
-# Run MLflow server
-CMD ["mlflow", "server", \
-    "--backend-store-uri", "${MLFLOW_BACKEND_STORE_URI}", \
-    "--default-artifact-root", "${MLFLOW_ARTIFACT_ROOT}", \
-    "--host", "0.0.0.0", \
-    "--port", "5000"]
+# Run MLflow server (using shell form for env var expansion)
+CMD mlflow server \
+    --backend-store-uri "${MLFLOW_BACKEND_STORE_URI}" \
+    --default-artifact-root "${MLFLOW_ARTIFACT_ROOT}" \
+    --host 0.0.0.0 \
+    --port 5000
+

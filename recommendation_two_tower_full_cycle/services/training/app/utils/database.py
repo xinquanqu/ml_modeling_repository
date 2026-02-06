@@ -56,3 +56,14 @@ def get_db_connection():
         )
     
     return _connection_pool.getconn()
+
+
+def return_db_connection(conn):
+    """Return a connection to the pool."""
+    global _connection_pool
+    
+    if _connection_pool is not None:
+        _connection_pool.putconn(conn)
+    else:
+        conn.close()
+
